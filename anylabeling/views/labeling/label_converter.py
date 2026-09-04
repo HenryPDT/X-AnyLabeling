@@ -35,9 +35,11 @@ class PoseClassError(ValueError):
 
 
 class LabelConverter:
-    def __init__(self, classes_file=None, pose_cfg_file=None):
+    def __init__(self, classes_file=None, pose_cfg_file=None, classes=None):
         self.classes = []
-        if classes_file:
+        if classes is not None:
+            self.classes = list(classes)
+        elif classes_file:
             self.classes = self.read_lines(classes_file)
             logger.info(f"Loading classes: {self.classes}")
 
@@ -1255,36 +1257,36 @@ class LabelConverter:
         with open(output_file, "w", encoding="utf-8") as f:
             for shape in data["shapes"]:
                 shape_type = shape["shape_type"]
-                if mode == "hbb" and shape_type == "rectangle":
+                if mode == "hbb":
                     label = shape["label"]
-                    points = self.clamp_points(
-                        shape["points"], image_width, image_height
-                    )
-                    if len(points) == 2:
-                        logger.warning(
-                            "UserWarning: Diagonal vertex mode is deprecated in X-AnyLabeling release v2.2.0 or later.\n"
-                            "Please update your code to accommodate the new four-point mode."
-                        )
-                        points = rectangle_from_diagonal(points)
-
                     if label not in self.classes:
                         continue
                     class_index = self.classes.index(label)
 
-                    x_center = (points[0][0] + points[2][0]) / (
-                        2 * image_width
-                    )
-                    y_center = (points[0][1] + points[2][1]) / (
-                        2 * image_height
-                    )
-                    width = abs(points[2][0] - points[0][0]) / image_width
-                    height = abs(points[2][1] - points[0][1]) / image_height
+                    raw_points = shape.get("points", [])
+                    if not raw_points or len(raw_points) < 2:
+                        continue
 
-                    f.write(
-                        f"{class_index} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
+                    points = self.clamp_points(
+                        raw_points, image_width, image_height
                     )
+                    if shape_type == "rectangle" and len(points) == 2:
+                        points = rectangle_from_diagonal(points)
 
-                    is_empty_file = False
+                    xs = [p[0] for p in points]
+                    ys = [p[1] for p in points]
+                    min_x, max_x = min(xs), max(xs)
+                    min_y, max_y = min(ys), max(ys)
+                    width = max(0.0, (max_x - min_x) / image_width)
+                    height = max(0.0, (max_y - min_y) / image_height)
+                    x_center = (min_x + max_x) / (2 * image_width)
+                    y_center = (min_y + max_y) / (2 * image_height)
+
+                    if width > 0 and height > 0:
+                        f.write(
+                            f"{class_index} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
+                        )
+                        is_empty_file = False
                 elif mode == "seg" and shape_type == "polygon":
                     label = shape["label"]
                     points = np.array(

@@ -4199,6 +4199,7 @@ class LabelingWidget(LabelDialog):
             self.unique_label_list.set_item_label(
                 unique_label_item, text, rgb, LABEL_OPACITY
             )
+            self.unique_label_list.refresh_indices()
 
         self.set_dirty()
         self._refresh_shape_filters()
@@ -4893,6 +4894,7 @@ class LabelingWidget(LabelDialog):
             self.unique_label_list.set_item_label(
                 item, shape.label, rgb, LABEL_OPACITY
             )
+            self.unique_label_list.refresh_indices()
 
         if shape.label not in self.label_info:
             rgb = self._get_rgb_by_label(shape.label)
@@ -4952,6 +4954,28 @@ class LabelingWidget(LabelDialog):
                 self.unique_label_list.set_item_label(
                     item, label, rgb, LABEL_OPACITY
                 )
+        self.unique_label_list.refresh_indices()
+
+    def get_project_classes(self):
+        """
+        Get the list of classes in their exact project-defined order.
+        """
+        classes = []
+        if hasattr(self, "unique_label_list"):
+            for i in range(self.unique_label_list.count()):
+                item = self.unique_label_list.item(i)
+                lbl = item.data(QtCore.Qt.ItemDataRole.UserRole) or item.text()
+                if lbl and lbl not in classes:
+                    classes.append(lbl)
+        if (
+            not classes
+            and hasattr(self, "_config")
+            and self._config.get("labels")
+        ):
+            for lbl in self._config["labels"]:
+                if lbl and lbl not in classes:
+                    classes.append(lbl)
+        return classes
 
     def _update_shape_color(self, shape):
         r, g, b = self._get_rgb_by_label(shape.label)

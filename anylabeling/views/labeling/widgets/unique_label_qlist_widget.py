@@ -28,13 +28,13 @@ class UniqueLabelQListWidget(EscapableQListWidget):
         item.setData(Qt.ItemDataRole.UserRole, label)
         return item
 
-    def set_item_label(self, item, label, color=None, opacity=255):
+    def set_item_label(self, item, label, color=None, opacity=255, **kwargs):
         qlabel = QtWidgets.QLabel()
         qlabel.setContentsMargins(8, 4, 8, 4)
         if color is None:
             qlabel.setText(f"{label}")
         else:
-            qlabel.setText("{}".format(html.escape(label)))
+            qlabel.setText(f"{html.escape(label)}")
             background_color = QtGui.QColor(*color, opacity)
             style_sheet = (
                 f"background-color: rgba("
@@ -50,6 +50,10 @@ class UniqueLabelQListWidget(EscapableQListWidget):
         )
         item.setSizeHint(qlabel.sizeHint())
         self.setItemWidget(item, qlabel)
+
+    def refresh_indices(self):
+        """Maintain order without rendering index prefixes."""
+        pass
 
     def update_item_color(self, label, color, opacity=255):
         items = self.find_items_by_label(label)

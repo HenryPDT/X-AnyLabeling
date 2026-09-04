@@ -3,6 +3,7 @@ import jsonlines
 import os
 import os.path as osp
 import time
+import re
 import yaml
 
 from PyQt6 import QtWidgets
@@ -1369,6 +1370,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
     if not _check_filename_exist(self):
         return
 
+    labels = []
     if mode == "pose":
         filter = "Classes Files (*.yaml);;All Files (*)"
         self.yaml_file, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -1392,44 +1394,187 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
             popup.show_popup(self, popup_height=65, position="center")
             return
 
-        labels = []
         for class_name, keypoint_name in converter.pose_classes.items():
             labels.append(class_name)
             labels.extend(keypoint_name)
 
     elif mode in ["hbb", "obb", "seg"]:
-        filter = "Classes Files (*.txt);;All Files (*)"
+        filter = "Classes Files (*.txt *.names);;All Files (*)"
+        initial_file = ""
+        if self.filename:
+            img_dir = osp.dirname(self.filename)
+            for cand in ["classes.txt", "obj.names", "coco.names"]:
+                p = osp.join(img_dir, cand)
+                if osp.exists(p):
+                    initial_file = p
+                    break
+                p2 = osp.join(osp.dirname(img_dir), cand)
+                if osp.exists(p2):
+                    initial_file = p2
+                    break
+
         self.classes_file, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
-            self.tr("Select a specific classes file"),
-            "",
+            self.tr("Select a classes file (classes.txt / obj.names)"),
+            initial_file,
             filter,
         )
         if not self.classes_file:
             return
 
         with open(self.classes_file, "r", encoding="utf-8") as f:
-            labels = f.read().splitlines()
-        converter = LabelConverter(classes_file=self.classes_file)
+            labels = [
+                line.strip() for line in f.read().splitlines() if line.strip()
+            ]
+        converter = LabelConverter(classes=labels)
+
+    # Resolve dataset images and roots
+    image_list = (
+        list(self.image_list)
+        if hasattr(self, "image_list") and self.image_list
+        else [self.filename]
+    )
+    source_root = osp.dirname(osp.abspath(self.filename))
+    if hasattr(self, "last_open_dir") and self.last_open_dir:
+        try:
+            if osp.commonpath(
+                (self.last_open_dir, source_root)
+            ) == osp.abspath(self.last_open_dir):
+                source_root = osp.abspath(self.last_open_dir)
+        except ValueError:
+            pass
+
+    # Auto-detect layout: inspect a sample of images
+    sample_images = image_list[:25]
+    darknet_hits = 0
+    ultralytics_hits = 0
+    detected_ultralytics_folder = ""
+
+    cand_ultralytics_roots = []
+    parent_source = osp.dirname(source_root)
+    for cand in [
+        osp.join(parent_source, "labels"),
+        osp.join(source_root, "labels"),
+    ]:
+        if osp.exists(cand) and cand not in cand_ultralytics_roots:
+            cand_ultralytics_roots.append(cand)
+
+    for img in sample_images:
+        txt_darknet = osp.splitext(img)[0] + ".txt"
+        if osp.exists(txt_darknet):
+            darknet_hits += 1
+
+        txt_ultra1 = (
+            re.sub(
+                r"([/\\])images([/\\])", r"\1labels\2", osp.splitext(img)[0]
+            )
+            + ".txt"
+        )
+        if txt_ultra1 != txt_darknet and osp.exists(txt_ultra1):
+            ultralytics_hits += 1
+            m = re.search(r"(.*?)[/\\]labels[/\\]", txt_ultra1)
+            if m:
+                detected_ultralytics_folder = osp.join(m.group(1), "labels")
+
+        try:
+            rel = osp.relpath(img, source_root)
+            rel_txt = osp.splitext(rel)[0] + ".txt"
+            for u_root in cand_ultralytics_roots:
+                if osp.exists(osp.join(u_root, rel_txt)):
+                    ultralytics_hits += 1
+                    if not detected_ultralytics_folder:
+                        detected_ultralytics_folder = u_root
+                    break
+        except Exception:
+            pass
+
+    if ultralytics_hits > 0 and ultralytics_hits >= darknet_hits:
+        detected_layout = "ultralytics"
+        detected_path = detected_ultralytics_folder or (
+            cand_ultralytics_roots[0]
+            if cand_ultralytics_roots
+            else osp.join(parent_source, "labels")
+        )
+    elif darknet_hits > 0:
+        detected_layout = "darknet"
+        detected_path = source_root
+    elif cand_ultralytics_roots:
+        detected_layout = "ultralytics"
+        detected_path = cand_ultralytics_roots[0]
+    else:
+        detected_layout = "darknet"
+        detected_path = source_root
 
     dialog = QtWidgets.QDialog(self)
     dialog.setWindowTitle(self.tr("Upload Options"))
-    dialog.setMinimumWidth(500)
+    dialog.setMinimumWidth(540)
     dialog.setStyleSheet(get_export_option_style())
 
     layout = QVBoxLayout()
     layout.setContentsMargins(24, 24, 24, 24)
     layout.setSpacing(16)
 
+    # Info summary
+    summary_text = (
+        f"{len(labels)} classes loaded: "
+        + ", ".join(labels[:5])
+        + (f", ... (+{len(labels) - 5})" if len(labels) > 5 else "")
+    )
+    summary_label = QtWidgets.QLabel(summary_text)
+    summary_label.setStyleSheet("font-size: 11px; opacity: 0.8;")
+    layout.addWidget(summary_label)
+
+    # Format layout selection
+    format_label = QtWidgets.QLabel(
+        self.tr("YOLO Layout (Auto-detected: %s):") % detected_layout.title()
+    )
+    format_label.setStyleSheet("font-weight: bold;")
+    layout.addWidget(format_label)
+
+    format_layout = QVBoxLayout()
+    ultralytics_radio = QtWidgets.QRadioButton(
+        self.tr("Ultralytics Format (Labels in separate labels/ folder)")
+    )
+    darknet_radio = QtWidgets.QRadioButton(
+        self.tr("Darknet Format (Labels alongside images in same directory)")
+    )
+    custom_radio = QtWidgets.QRadioButton(self.tr("Custom Folder"))
+
+    if detected_layout == "ultralytics":
+        ultralytics_radio.setChecked(True)
+    else:
+        darknet_radio.setChecked(True)
+
+    format_layout.addWidget(ultralytics_radio)
+    format_layout.addWidget(darknet_radio)
+    format_layout.addWidget(custom_radio)
+    layout.addLayout(format_layout)
+
     path_layout = QVBoxLayout()
-    path_label = QtWidgets.QLabel(self.tr("Select Upload Folder"))
+    path_label = QtWidgets.QLabel(self.tr("Labels Folder:"))
     path_layout.addWidget(path_label)
 
     path_input_layout = QHBoxLayout()
     path_input_layout.setSpacing(8)
 
     path_edit = QtWidgets.QLineEdit()
-    path_edit.setText(osp.dirname(osp.dirname(self.filename)))
+    path_edit.setText(detected_path)
+
+    def on_format_changed():
+        if ultralytics_radio.isChecked():
+            path_edit.setText(
+                detected_ultralytics_folder
+                or (
+                    cand_ultralytics_roots[0]
+                    if cand_ultralytics_roots
+                    else osp.join(parent_source, "labels")
+                )
+            )
+        elif darknet_radio.isChecked():
+            path_edit.setText(source_root)
+
+    ultralytics_radio.toggled.connect(on_format_changed)
+    darknet_radio.toggled.connect(on_format_changed)
 
     def browse_upload_folder():
         path = QtWidgets.QFileDialog.getExistingDirectory(
@@ -1442,6 +1587,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
         )
         if path:
             path_edit.setText(path)
+            custom_radio.setChecked(True)
 
     path_button = QtWidgets.QPushButton(self.tr("Browse"))
     path_button.clicked.connect(browse_upload_folder)
@@ -1466,7 +1612,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
     cancel_button.clicked.connect(dialog.reject)
     cancel_button.setStyleSheet(get_cancel_btn_style())
 
-    ok_button = QtWidgets.QPushButton(self.tr("OK"))
+    ok_button = QtWidgets.QPushButton(self.tr("Upload"))
     ok_button.clicked.connect(dialog.accept)
     ok_button.setStyleSheet(get_ok_btn_style())
 
@@ -1481,12 +1627,13 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
     if not result:
         return
 
-    label_dir_path = path_edit.text()
+    selected_folder = path_edit.text()
     preserve_existing = preserve_checkbox.isChecked()
-    image_dir_path = osp.dirname(self.filename)
-    image_file_list = os.listdir(image_dir_path)
-    label_file_list = os.listdir(label_dir_path)
-    output_dir_path = self.output_dir if self.output_dir else image_dir_path
+    layout_mode = (
+        "ultralytics"
+        if ultralytics_radio.isChecked()
+        else ("darknet" if darknet_radio.isChecked() else "custom")
+    )
 
     response = QtWidgets.QMessageBox()
     response.setIcon(QtWidgets.QMessageBox.Icon.Warning)
@@ -1501,7 +1648,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
             )
         )
     else:
-        response.setText(self.tr("Current annotation will be lost"))
+        response.setText(self.tr("Current annotations may be overwritten"))
         response.setInformativeText(
             self.tr(
                 "You are going to upload new annotations to this task. Continue?"
@@ -1517,10 +1664,10 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
         return
 
     progress_dialog = QProgressDialog(
-        self.tr("Uploading..."),
+        self.tr("Uploading annotations..."),
         self.tr("Cancel"),
         0,
-        len(image_file_list),
+        len(image_list),
         self,
     )
     progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
@@ -1531,23 +1678,76 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
 
+    uploaded_count = 0
     try:
-        for i, image_filename in enumerate(image_file_list):
-            if image_filename.endswith(".json"):
+        for i, image_file in enumerate(image_list):
+            if image_file.endswith(".json"):
                 continue
-            label_filename = osp.splitext(image_filename)[0] + ".txt"
-            data_filename = osp.splitext(image_filename)[0] + ".json"
-            if label_filename not in label_file_list:
+
+            try:
+                rel_path = osp.relpath(image_file, source_root)
+            except ValueError:
+                rel_path = osp.basename(image_file)
+            rel_base = osp.splitext(rel_path)[0]
+            img_base = osp.splitext(osp.basename(image_file))[0]
+
+            candidate_files = []
+            if layout_mode == "darknet":
+                candidate_files.append(osp.splitext(image_file)[0] + ".txt")
+                candidate_files.append(
+                    osp.join(selected_folder, rel_base + ".txt")
+                )
+                candidate_files.append(
+                    osp.join(selected_folder, img_base + ".txt")
+                )
+            elif layout_mode == "ultralytics":
+                candidate_files.append(
+                    osp.join(selected_folder, rel_base + ".txt")
+                )
+                candidate_files.append(
+                    re.sub(
+                        r"([/\\])images([/\\])",
+                        r"\1labels\2",
+                        osp.splitext(image_file)[0],
+                    )
+                    + ".txt"
+                )
+                candidate_files.append(
+                    osp.join(selected_folder, img_base + ".txt")
+                )
+            else:  # custom
+                candidate_files.append(
+                    osp.join(selected_folder, rel_base + ".txt")
+                )
+                candidate_files.append(
+                    osp.join(selected_folder, img_base + ".txt")
+                )
+
+            input_file = None
+            for cand in candidate_files:
+                if osp.exists(cand):
+                    input_file = cand
+                    break
+
+            if not input_file:
+                progress_dialog.setValue(i)
                 continue
-            input_file = osp.join(label_dir_path, label_filename)
-            output_file = osp.join(output_dir_path, data_filename)
-            image_file = osp.join(image_dir_path, image_filename)
+
+            if self.output_dir:
+                output_file = osp.join(self.output_dir, rel_base + ".json")
+            else:
+                output_file = osp.splitext(image_file)[0] + ".json"
+
+            os.makedirs(osp.dirname(output_file), exist_ok=True)
 
             existing_shapes = []
             if preserve_existing and osp.exists(output_file):
-                with open(output_file, "r", encoding="utf-8") as f:
-                    existing_data = json.load(f)
+                try:
+                    with open(output_file, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
                     existing_shapes = existing_data.get("shapes", [])
+                except Exception:
+                    existing_shapes = []
 
             if mode in ["hbb", "seg"]:
                 converter.yolo_to_custom(
@@ -1569,38 +1769,68 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
                     image_file=image_file,
                 )
 
-            # Merge with existing shapes if needed
             if preserve_existing and existing_shapes:
-                with open(output_file, "r", encoding="utf-8") as f:
-                    new_data = json.load(f)
-                new_data["shapes"] = existing_shapes + new_data.get(
-                    "shapes", []
-                )
-                with open(output_file, "w", encoding="utf-8") as f:
-                    json.dump(new_data, f, indent=2, ensure_ascii=False)
+                try:
+                    with open(output_file, "r", encoding="utf-8") as f:
+                        new_data = json.load(f)
+                    new_data["shapes"] = existing_shapes + new_data.get(
+                        "shapes", []
+                    )
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        json.dump(new_data, f, indent=2, ensure_ascii=False)
+                except Exception as err:
+                    logger.warning(
+                        f"Failed to merge existing shapes in {output_file}: {err}"
+                    )
 
+            uploaded_count += 1
             progress_dialog.setValue(i)
             if progress_dialog.wasCanceled():
                 break
 
         progress_dialog.close()
+
+        if (
+            labels
+            and hasattr(self, "unique_label_list")
+            and self.unique_label_list
+        ):
+            if hasattr(self.unique_label_list, "clear") and callable(
+                self.unique_label_list.clear
+            ):
+                self.unique_label_list.clear()
+            for idx, label in enumerate(labels):
+                if hasattr(self.unique_label_list, "create_item_from_label"):
+                    item = self.unique_label_list.create_item_from_label(label)
+                    self.unique_label_list.addItem(item)
+                    rgb = (
+                        self._get_rgb_by_label(label)
+                        if hasattr(self, "_get_rgb_by_label")
+                        else (255, 0, 0)
+                    )
+                    self.unique_label_list.set_item_label(
+                        item, label, rgb, LABEL_OPACITY, index=idx
+                    )
+            if hasattr(self.unique_label_list, "refresh_indices") and callable(
+                self.unique_label_list.refresh_indices
+            ):
+                self.unique_label_list.refresh_indices()
+            if hasattr(self, "_config") and isinstance(self._config, dict):
+                self._config["labels"] = labels
+                from anylabeling.config import save_config
+
+                save_config(self._config)
+
         _refresh_after_annotation_upload(self)
         popup = Popup(
-            self.tr("Upload completed successfully!"),
+            self.tr(
+                f"Upload completed successfully!\n"
+                f"{uploaded_count} files uploaded with {len(labels)} classes."
+            ),
             self,
             icon=new_icon_path("copy-green", "svg"),
         )
         popup.show_popup(self, position="center")
-
-        # Initialize unique labels
-        for label in labels:
-            if not self.unique_label_list.find_items_by_label(label):
-                item = self.unique_label_list.create_item_from_label(label)
-                self.unique_label_list.addItem(item)
-                rgb = self._get_rgb_by_label(label)
-                self.unique_label_list.set_item_label(
-                    item, label, rgb, LABEL_OPACITY
-                )
 
     except Exception as e:
         progress_dialog.close()

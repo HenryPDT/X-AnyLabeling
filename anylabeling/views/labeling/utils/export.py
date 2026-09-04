@@ -153,7 +153,7 @@ def _get_yolo_source_root(filename, last_open_dir):
     return source_root
 
 
-def _validate_yolo_export_path(source_root, save_path):
+def _validate_yolo_export_path(source_root, save_path, allow_same_dir=False):
     if not save_path:
         raise ValueError("Please select an export root directory.")
 
@@ -166,21 +166,23 @@ def _validate_yolo_export_path(source_root, save_path):
         common_path = osp.commonpath((source_root, save_path))
     except ValueError:
         return
-    if common_path == source_root:
-        raise ValueError(
-            "The export root directory cannot be the loaded image directory "
-            "or one of its subdirectories."
-        )
-    if common_path == save_path:
-        raise ValueError(
-            "The export root directory cannot contain the loaded image "
-            "directory."
-        )
+    if not allow_same_dir:
+        if common_path == source_root:
+            raise ValueError(
+                "The export root directory cannot be the loaded image directory "
+                "or one of its subdirectories."
+            )
+        if common_path == save_path:
+            raise ValueError(
+                "The export root directory cannot contain the loaded image "
+                "directory."
+            )
 
 
-def _get_yolo_export_files(image_list, source_root, save_path):
+def _get_yolo_export_files(image_list, source_root, save_path, layout=None):
     export_files = []
     label_destinations = {}
+    is_in_place = osp.realpath(save_path) == osp.realpath(source_root)
     for image_file in image_list:
         try:
             relative_image_path = osp.relpath(image_file, source_root)
@@ -192,7 +194,15 @@ def _get_yolo_export_files(image_list, source_root, save_path):
         ):
             relative_image_path = osp.basename(image_file)
         relative_label_path = osp.splitext(relative_image_path)[0] + ".txt"
-        destination_key = osp.normcase(osp.normpath(relative_label_path))
+
+        if is_in_place:
+            dst_file = osp.splitext(image_file)[0] + ".txt"
+            image_dst = image_file
+        else:
+            dst_file = osp.join(save_path, relative_label_path)
+            image_dst = osp.join(save_path, relative_image_path)
+
+        destination_key = osp.normcase(osp.normpath(dst_file))
         if destination_key in label_destinations:
             raise ValueError(
                 "Multiple images map to the same YOLO label file "
@@ -200,17 +210,11 @@ def _get_yolo_export_files(image_list, source_root, save_path):
                 f"{label_destinations[destination_key]}\n{image_file}"
             )
         label_destinations[destination_key] = image_file
-        export_files.append(
-            (
-                image_file,
-                osp.join(save_path, relative_label_path),
-                osp.join(save_path, relative_image_path),
-            )
-        )
+        export_files.append((image_file, dst_file, image_dst))
     return export_files
 
 
-def export_yolo_annotation(self, mode):
+def export_yolo_annotation(self, mode):  # noqa: C901
     if not _check_filename_exist(self):
         return
 
@@ -246,20 +250,28 @@ def export_yolo_annotation(self, mode):
             return
 
     elif mode in ["hbb", "obb", "seg"]:
-        filter = QCoreApplication.translate(
-            "LabelingWidget", "Classes Files (*.txt);;All Files (*)"
+        project_classes = (
+            self.get_project_classes()
+            if hasattr(self, "get_project_classes")
+            else []
         )
-        self.classes_file, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            QCoreApplication.translate(
-                "LabelingWidget", "Select a specific classes file"
-            ),
-            "",
-            filter,
-        )
-        if not self.classes_file:
-            return
-        converter = LabelConverter(classes_file=self.classes_file)
+        if not project_classes:
+            filter = QCoreApplication.translate(
+                "LabelingWidget", "Classes Files (*.txt);;All Files (*)"
+            )
+            self.classes_file, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                QCoreApplication.translate(
+                    "LabelingWidget", "Select a specific classes file"
+                ),
+                "",
+                filter,
+            )
+            if not self.classes_file:
+                return
+            converter = LabelConverter(classes_file=self.classes_file)
+        else:
+            converter = LabelConverter(classes=project_classes)
 
     source_root = _get_yolo_source_root(
         self.filename, getattr(self, "last_open_dir", None)
@@ -276,6 +288,24 @@ def export_yolo_annotation(self, mode):
     layout.setContentsMargins(24, 24, 24, 24)
     layout.setSpacing(16)
 
+    # Show summary of classes being exported
+    if (
+        hasattr(converter, "classes")
+        and isinstance(converter.classes, (list, tuple))
+        and converter.classes
+    ):
+        classes_summary = ", ".join(
+            f"[{idx}] {c}" for idx, c in enumerate(converter.classes[:6])
+        )
+        if len(converter.classes) > 6:
+            classes_summary += f", ... ({len(converter.classes)} classes)"
+        summary_label = QtWidgets.QLabel(
+            QCoreApplication.translate("LabelingWidget", "Classes: %s")
+            % classes_summary
+        )
+        summary_label.setStyleSheet("opacity: 0.7; font-size: 11px;")
+        layout.addWidget(summary_label)
+
     path_layout = QVBoxLayout()
     path_label = QtWidgets.QLabel(
         QCoreApplication.translate("LabelingWidget", "Export path")
@@ -285,8 +315,9 @@ def export_yolo_annotation(self, mode):
     path_input_layout = QHBoxLayout()
     path_input_layout.setSpacing(8)
 
+    default_labels_path = osp.realpath(osp.join(source_root, "..", "labels"))
     path_edit = QtWidgets.QLineEdit()
-    path_edit.setText(osp.realpath(osp.join(source_root, "..", "labels")))
+    path_edit.setText(default_labels_path)
     path_edit.setPlaceholderText(
         QCoreApplication.translate("LabelingWidget", "Select Export Directory")
     )
@@ -319,6 +350,14 @@ def export_yolo_annotation(self, mode):
     )
     layout.addWidget(options_label)
 
+    in_place_checkbox = QtWidgets.QCheckBox(
+        QCoreApplication.translate(
+            "LabelingWidget", "Export labels alongside images (in-place)?"
+        )
+    )
+    in_place_checkbox.setChecked(False)
+    layout.addWidget(in_place_checkbox)
+
     save_images_checkbox = QtWidgets.QCheckBox(
         QCoreApplication.translate("LabelingWidget", "Save with images?")
     )
@@ -330,6 +369,27 @@ def export_yolo_annotation(self, mode):
     )
     skip_empty_files_checkbox.setChecked(False)
     layout.addWidget(skip_empty_files_checkbox)
+
+    in_place = False
+    last_custom_path = default_labels_path
+
+    def on_in_place_toggled(checked):
+        nonlocal in_place, last_custom_path
+        in_place = checked
+        if checked:
+            last_custom_path = path_edit.text()
+            path_edit.setText(source_root)
+            path_edit.setEnabled(False)
+            path_button.setEnabled(False)
+            save_images_checkbox.setChecked(False)
+            save_images_checkbox.setEnabled(False)
+        else:
+            path_edit.setText(last_custom_path)
+            path_edit.setEnabled(True)
+            path_button.setEnabled(True)
+            save_images_checkbox.setEnabled(True)
+
+    in_place_checkbox.toggled.connect(on_in_place_toggled)
 
     button_layout = QHBoxLayout()
     button_layout.setContentsMargins(0, 16, 0, 0)
@@ -358,13 +418,18 @@ def export_yolo_annotation(self, mode):
     if not result:
         return
 
-    save_images = save_images_checkbox.isChecked()
-    skip_empty_files = skip_empty_files_checkbox.isChecked()
     save_path = path_edit.text()
+    is_in_place = in_place or (
+        osp.realpath(save_path) == osp.realpath(source_root)
+    )
+    save_images = save_images_checkbox.isChecked() and not is_in_place
+    skip_empty_files = skip_empty_files_checkbox.isChecked()
     image_list = self.image_list if self.image_list else [self.filename]
 
     try:
-        _validate_yolo_export_path(source_root, save_path)
+        _validate_yolo_export_path(
+            source_root, save_path, allow_same_dir=is_in_place
+        )
         export_files = _get_yolo_export_files(
             image_list, source_root, save_path
         )
@@ -429,7 +494,7 @@ def export_yolo_annotation(self, mode):
             if response == QtWidgets.QMessageBox.StandardButton.No:
                 obb_boundary_policy = "skip"
 
-    if osp.exists(save_path):
+    if osp.exists(save_path) and not is_in_place:
         msg_box = QtWidgets.QMessageBox(self)
         msg_box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
         msg_box.setWindowTitle(
@@ -473,7 +538,7 @@ def export_yolo_annotation(self, mode):
             os.makedirs(save_path)
         elif clicked_button == cancel_button:
             return
-    else:
+    elif not osp.exists(save_path):
         os.makedirs(save_path)
 
     progress_dialog = QProgressDialog(
@@ -509,8 +574,9 @@ def export_yolo_annotation(self, mode):
             )
 
             if save_images and not (skip_empty_files and is_empty_file):
-                os.makedirs(osp.dirname(image_dst), exist_ok=True)
-                shutil.copy(image_file, image_dst)
+                if osp.realpath(image_file) != osp.realpath(image_dst):
+                    os.makedirs(osp.dirname(image_dst), exist_ok=True)
+                    shutil.copy(image_file, image_dst)
 
             if skip_empty_files and is_empty_file and osp.exists(dst_file):
                 os.remove(dst_file)
@@ -518,6 +584,28 @@ def export_yolo_annotation(self, mode):
             progress_dialog.setValue(i)
             if progress_dialog.wasCanceled():
                 break
+
+        # Auto-write classes.txt
+        if (
+            hasattr(converter, "classes")
+            and isinstance(converter.classes, (list, tuple))
+            and converter.classes
+        ):
+            classes_text = "\n".join(converter.classes) + "\n"
+            try:
+                with open(
+                    osp.join(save_path, "classes.txt"), "w", encoding="utf-8"
+                ) as f:
+                    f.write(classes_text)
+                if osp.basename(save_path) == "labels":
+                    with open(
+                        osp.join(osp.dirname(save_path), "classes.txt"),
+                        "w",
+                        encoding="utf-8",
+                    ) as f:
+                        f.write(classes_text)
+            except Exception as err:
+                logger.warning(f"Could not auto-write classes.txt: {err}")
 
         current_image_file = None
         progress_dialog.close()
@@ -764,16 +852,24 @@ def export_coco_annotation(self, mode):
             popup.show_popup(self, popup_height=65, position="center")
             return
     elif mode in ["rectangle", "polygon"]:
-        filter = "Classes Files (*.txt);;All Files (*)"
-        self.classes_file, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            self.tr("Select a specific classes file"),
-            "",
-            filter,
+        project_classes = (
+            self.get_project_classes()
+            if hasattr(self, "get_project_classes")
+            else []
         )
-        if not self.classes_file:
-            return
-        converter = LabelConverter(classes_file=self.classes_file)
+        if not project_classes:
+            filter = "Classes Files (*.txt);;All Files (*)"
+            self.classes_file, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                self.tr("Select a specific classes file"),
+                "",
+                filter,
+            )
+            if not self.classes_file:
+                return
+            converter = LabelConverter(classes_file=self.classes_file)
+        else:
+            converter = LabelConverter(classes=project_classes)
 
     dialog = QtWidgets.QDialog(self)
     dialog.setWindowTitle(self.tr("Export options"))

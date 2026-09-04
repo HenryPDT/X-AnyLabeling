@@ -760,7 +760,10 @@ class LabelModifyDialog(QtWidgets.QDialog):
     """A dialog for modifying labels across multiple files.
 
     This dialog allows users to:
-    - Change label names
+    - View class ID and dataset statistics (total annotations and image counts)
+    - Reorder class positions (Move Up / Move Down)
+    - Merge classes across all project JSON files
+    - Change label names dataset-wide
     - Delete labels
     - Modify label colors
     - Select file range for applying changes
@@ -778,46 +781,123 @@ class LabelModifyDialog(QtWidgets.QDialog):
         self.opacity = opacity
         self.image_file_list = self.get_image_file_list()
         self.start_index = 1
-        self.end_index = len(self.image_file_list)
+        self.end_index = max(1, len(self.image_file_list))
+        self.shape_counts = {}
+        self.image_counts = {}
+        self.ordered_labels = []
         self.init_label_info()
         self.init_ui()
 
     def init_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle(self.tr("Label Change Manager"))
+        self.setWindowTitle(self.tr("Label / Class Manager"))
         self.setWindowFlags(
             self.windowFlags()
             | Qt.WindowType.WindowMinimizeButtonHint
             | Qt.WindowType.WindowMaximizeButtonHint
         )
-        self.resize(700, 400)
+        self.resize(860, 520)
         self.move_to_center()
 
-        title_list = ["Category", "Delete", "New Value", "Visible", "Color"]
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # Action toolbar for reordering and merging
+        toolbar_layout = QtWidgets.QHBoxLayout()
+        toolbar_layout.setSpacing(8)
+
+        self.move_up_button = QtWidgets.QPushButton(self.tr("▲ Move Up"))
+        self.move_up_button.setStyleSheet(get_cancel_btn_style())
+        self.move_up_button.clicked.connect(self.move_up)
+        toolbar_layout.addWidget(self.move_up_button)
+
+        self.move_down_button = QtWidgets.QPushButton(self.tr("▼ Move Down"))
+        self.move_down_button.setStyleSheet(get_cancel_btn_style())
+        self.move_down_button.clicked.connect(self.move_down)
+        toolbar_layout.addWidget(self.move_down_button)
+
+        self.merge_button = QtWidgets.QPushButton(self.tr("Merge Class..."))
+        self.merge_button.setStyleSheet(get_cancel_btn_style())
+        self.merge_button.setToolTip(
+            self.tr("Merge selected class into another class across all files")
+        )
+        self.merge_button.clicked.connect(self.merge_selected_label)
+        toolbar_layout.addWidget(self.merge_button)
+
+        toolbar_layout.addStretch(1)
+
+        info_label = QtWidgets.QLabel(
+            self.tr(
+                "Class IDs (0..N) define export order. Reorder with Move Up/Down."
+            )
+        )
+        info_label.setStyleSheet("opacity: 0.7; font-size: 11px;")
+        toolbar_layout.addWidget(info_label)
+
+        layout.addLayout(toolbar_layout)
+
+        title_list = [
+            "ID",
+            "Category",
+            "Objects",
+            "Images",
+            "New Value",
+            "Color",
+            "Visible",
+            "Delete",
+        ]
         self.table_widget = QTableWidget(self)
         self.table_widget.setColumnCount(len(title_list))
         self.table_widget.setHorizontalHeaderLabels(title_list)
         self.table_widget.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked
         )
-        self.table_widget.setSelectionMode(
-            QtWidgets.QAbstractItemView.SelectionMode.NoSelection
+        self.table_widget.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self.table_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.table_widget.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+        )
         self.table_widget.verticalHeader().setDefaultSectionSize(40)
+        self.table_widget.verticalHeader().setVisible(False)
 
-        # Set header font and alignment
+        header = self.table_widget.horizontalHeader()
+        header.setSectionResizeMode(
+            0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(
+            1, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
+        header.setSectionResizeMode(
+            2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(
+            3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(
+            4, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
+        header.setSectionResizeMode(
+            5, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(
+            6, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(
+            7, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+
         for i in range(len(title_list)):
-            self.table_widget.horizontalHeaderItem(i).setFont(
-                QFont("Arial", 8, QFont.Weight.Bold)
-            )
-            self.table_widget.horizontalHeaderItem(i).setTextAlignment(
-                QtCore.Qt.AlignmentFlag.AlignCenter
-            )
-            if i == 0:
-                self.table_widget.horizontalHeaderItem(i).setToolTip(
-                    self.tr("Double-click to copy label text")
+            header_item = self.table_widget.horizontalHeaderItem(i)
+            if header_item:
+                header_item.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                header_item.setTextAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignCenter
                 )
+        self.table_widget.horizontalHeaderItem(1).setToolTip(
+            self.tr("Double-click to copy label text")
+        )
 
         self.table_widget.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu
@@ -828,52 +908,64 @@ class LabelModifyDialog(QtWidgets.QDialog):
         self.table_widget.itemDoubleClicked.connect(
             self.on_item_double_clicked
         )
+        layout.addWidget(self.table_widget)
 
-        # Add input fields for range selection
-        range_layout = QtWidgets.QHBoxLayout()
-        # Add stretch to center the widgets
-        range_layout.addStretch(1)
+        # Bottom section: Range selection and Apply/Cancel buttons
+        bottom_layout = QtWidgets.QHBoxLayout()
+        bottom_layout.setSpacing(12)
 
-        from_label = QtWidgets.QLabel("From:")
+        range_label = QtWidgets.QLabel(self.tr("Apply range:"))
+        bottom_layout.addWidget(range_label)
+
+        from_label = QtWidgets.QLabel(self.tr("From:"))
         self.from_input = QtWidgets.QSpinBox()
         self.from_input.setMinimum(1)
-        self.from_input.setMaximum(len(self.image_file_list))
+        self.from_input.setMaximum(max(1, len(self.image_file_list)))
         self.from_input.setSingleStep(1)
         self.from_input.setValue(self.start_index)
         self.from_input.setStyleSheet(get_spinbox_style())
-        range_layout.addWidget(from_label)
-        range_layout.addWidget(self.from_input)
+        bottom_layout.addWidget(from_label)
+        bottom_layout.addWidget(self.from_input)
 
-        to_label = QtWidgets.QLabel("To:")
+        to_label = QtWidgets.QLabel(self.tr("To:"))
         self.to_input = QtWidgets.QSpinBox()
         self.to_input.setMinimum(1)
-        self.to_input.setMaximum(len(self.image_file_list))
+        self.to_input.setMaximum(max(1, len(self.image_file_list)))
         self.to_input.setSingleStep(1)
-        self.to_input.setValue(len(self.image_file_list))
+        self.to_input.setValue(max(1, len(self.image_file_list)))
         self.to_input.setStyleSheet(get_spinbox_style())
-        range_layout.addWidget(to_label)
-        range_layout.addWidget(self.to_input)
+        bottom_layout.addWidget(to_label)
+        bottom_layout.addWidget(self.to_input)
 
-        self.range_button = QtWidgets.QPushButton("Go")
-        self.range_button.setStyleSheet(get_ok_btn_style())
-        range_layout.addWidget(self.range_button)
-        self.range_button.clicked.connect(self.update_range)
+        bottom_layout.addStretch(1)
 
-        # Add stretch to center the widgets
-        range_layout.addStretch(1)
+        self.cancel_button = QtWidgets.QPushButton(self.tr("Cancel"))
+        self.cancel_button.setStyleSheet(get_cancel_btn_style())
+        self.cancel_button.clicked.connect(self.reject)
+        bottom_layout.addWidget(self.cancel_button)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(self.table_widget)
-        layout.addLayout(range_layout)
+        self.apply_button = QtWidgets.QPushButton(self.tr("Apply / Save"))
+        self.apply_button.setStyleSheet(get_ok_btn_style())
+        self.apply_button.clicked.connect(self.update_range)
+        bottom_layout.addWidget(self.apply_button)
+
+        layout.addLayout(bottom_layout)
 
         self.populate_table()
 
     def get_image_file_list(self):
         image_file_list = []
-        count = self.parent.file_list_widget.count()
-        for c in range(count):
-            image_file = self.parent.file_list_widget.item(c).text()
-            image_file_list.append(image_file)
+        if hasattr(self.parent, "file_list_widget"):
+            count = self.parent.file_list_widget.count()
+            for c in range(count):
+                image_file = self.parent.file_list_widget.item(c).text()
+                image_file_list.append(image_file)
+        if (
+            not image_file_list
+            and hasattr(self.parent, "image_list")
+            and self.parent.image_list
+        ):
+            image_file_list = list(self.parent.image_list)
         return image_file_list
 
     def move_to_center(self):
@@ -882,98 +974,428 @@ class LabelModifyDialog(QtWidgets.QDialog):
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
+    def init_label_info(self):
+        self.shape_counts = {}
+        self.image_counts = {}
+        classes = []
+
+        # 1. Preserve order from parent's unique_label_list
+        if hasattr(self.parent, "unique_label_list"):
+            for i in range(self.parent.unique_label_list.count()):
+                item = self.parent.unique_label_list.item(i)
+                lbl = item.data(Qt.ItemDataRole.UserRole) or item.text()
+                if lbl and lbl not in classes:
+                    classes.append(lbl)
+
+        # 2. Preserve order from parent config
+        if hasattr(self.parent, "_config") and self.parent._config.get(
+            "labels"
+        ):
+            for lbl in self.parent._config["labels"]:
+                if lbl and lbl not in classes:
+                    classes.append(lbl)
+
+        # 3. Scan JSON files to calculate dataset shape & image counts and collect any new classes
+        for image_file in self.image_file_list:
+            label_dir, filename = os.path.split(image_file)
+            if self.parent.output_dir:
+                label_dir = self.parent.output_dir
+            label_file = os.path.join(
+                label_dir, os.path.splitext(filename)[0] + ".json"
+            )
+            if not os.path.exists(label_file):
+                continue
+            try:
+                with open(label_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                shapes = data.get("shapes", [])
+                seen_in_image = set()
+                for shape in shapes:
+                    label = shape.get("label", "")
+                    if not label:
+                        continue
+                    if label not in classes:
+                        classes.append(label)
+                    self.shape_counts[label] = (
+                        self.shape_counts.get(label, 0) + 1
+                    )
+                    if label not in seen_in_image:
+                        self.image_counts[label] = (
+                            self.image_counts.get(label, 0) + 1
+                        )
+                        seen_in_image.add(label)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to read {label_file} for label counts: {e}"
+                )
+
+        self.ordered_labels = classes
+
+        for c in self.ordered_labels:
+            if c in self.parent.label_info:
+                color = self.parent.label_info[c].get("color")
+                if not color:
+                    color = list(self.parent._get_rgb_by_label(c))
+                opacity = self.parent.label_info[c].get(
+                    "opacity", self.opacity
+                )
+                visible = self.parent.label_info[c].get("visible", True)
+            else:
+                color = list(self.parent._get_rgb_by_label(c))
+                opacity = self.opacity
+                visible = True
+
+            self.parent.label_info[c] = dict(
+                delete=False,
+                value=None,
+                color=color,
+                opacity=opacity,
+                visible=visible,
+            )
+
     def populate_table(self):
-        sorted_labels = sorted(
-            self.parent.label_info.items(),
-            key=lambda x: natural_sort_key(x[0]),
+        state = []
+        for label in self.ordered_labels:
+            info = self.parent.label_info.get(label, {})
+            color = QColor(
+                *(info.get("color") or self.parent._get_rgb_by_label(label))
+            )
+            color.setAlpha(info.get("opacity", self.opacity))
+            state.append(
+                {
+                    "label": label,
+                    "objects": str(self.shape_counts.get(label, 0)),
+                    "images": str(self.image_counts.get(label, 0)),
+                    "value": info.get("value") or "",
+                    "delete": info.get("delete", False),
+                    "visible": info.get("visible", True),
+                    "color": color,
+                }
+            )
+        self.populate_from_state(state)
+
+    def populate_from_state(self, state):
+        self.table_widget.setRowCount(0)
+        t = get_theme()
+        _base_style = (
+            f"QLineEdit {{"
+            f" border: none;"
+            f" border-radius: 0;"
+            f" background: transparent;"
+            f" padding: 0 8px;"
+            f" color: {t['text']};"
+            f"}}"
+            f"QLineEdit:focus {{"
+            f" background-color: {t['background_secondary']};"
+            f"}}"
         )
-        for i, (label, info) in enumerate(sorted_labels):
+
+        for i, item in enumerate(state):
+            label = item["label"]
             self.table_widget.insertRow(i)
 
+            # Column 0: ID
+            id_item = QTableWidgetItem(str(i))
+            id_item.setFlags(
+                id_item.flags() ^ QtCore.Qt.ItemFlag.ItemIsEditable
+            )
+            id_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            id_item.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            self.table_widget.setItem(i, 0, id_item)
+
+            # Column 1: Category
             class_item = QTableWidgetItem(label)
             class_item.setFlags(
                 class_item.flags() ^ QtCore.Qt.ItemFlag.ItemIsEditable
             )
             class_item.setToolTip(self.tr("Double-click to copy label text"))
+            self.table_widget.setItem(i, 1, class_item)
 
+            # Column 2: Objects count
+            obj_item = QTableWidgetItem(str(item.get("objects", "0")))
+            obj_item.setFlags(
+                obj_item.flags() ^ QtCore.Qt.ItemFlag.ItemIsEditable
+            )
+            obj_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.table_widget.setItem(i, 2, obj_item)
+
+            # Column 3: Images count
+            img_item = QTableWidgetItem(str(item.get("images", "0")))
+            img_item.setFlags(
+                img_item.flags() ^ QtCore.Qt.ItemFlag.ItemIsEditable
+            )
+            img_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.table_widget.setItem(i, 3, img_item)
+
+            # Column 4: New Value (rename)
+            value_edit = QtWidgets.QLineEdit()
+            value_edit.setText(item.get("value", ""))
+            if item.get("delete", False):
+                value_edit.setReadOnly(True)
+                value_edit.setStyleSheet(
+                    _base_style
+                    + f"QLineEdit {{ background-color: {t['surface']}; color: {t['text_secondary']}; }}"
+                )
+            else:
+                value_edit.setStyleSheet(_base_style)
+            value_edit.textChanged.connect(
+                lambda text, r=i: self.on_value_edit_changed(r, text)
+            )
+            self.table_widget.setCellWidget(i, 4, value_edit)
+
+            # Column 5: Color
+            color = item.get("color")
+            if not isinstance(color, QColor):
+                color = QColor(
+                    *(
+                        self.parent.label_info.get(label, {}).get(
+                            "color", [255, 0, 0]
+                        )
+                    )
+                )
+                color.setAlpha(self.opacity)
+            color_button = LabelColorButton(color, self)
+            color_button.setParent(self.table_widget)
+            self.table_widget.setCellWidget(i, 5, color_button)
+
+            # Column 6: Visible
+            visible_checkbox = QCheckBox()
+            visible_checkbox.setChecked(item.get("visible", True))
+            visible_checkbox.stateChanged.connect(
+                lambda state, row=i: self.on_visible_checkbox_changed(
+                    row, state
+                )
+            )
+            visible_container = QtWidgets.QWidget()
+            visible_layout = QtWidgets.QHBoxLayout(visible_container)
+            visible_layout.setContentsMargins(0, 0, 0, 0)
+            visible_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            visible_layout.addWidget(visible_checkbox)
+            self.table_widget.setCellWidget(i, 6, visible_container)
+
+            # Column 7: Delete
             delete_checkbox = QCheckBox()
-            delete_checkbox.setChecked(info["delete"])
+            delete_checkbox.setChecked(item.get("delete", False))
             delete_checkbox.setIcon(QtGui.QIcon(":/images/images/delete.png"))
             delete_checkbox.stateChanged.connect(
                 lambda state, row=i: self.on_delete_checkbox_changed(
                     row, state
                 )
             )
+            delete_container = QtWidgets.QWidget()
+            delete_layout = QtWidgets.QHBoxLayout(delete_container)
+            delete_layout.setContentsMargins(0, 0, 0, 0)
+            delete_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            delete_layout.addWidget(delete_checkbox)
+            self.table_widget.setCellWidget(i, 7, delete_container)
 
-            value_edit = QtWidgets.QLineEdit()
-            value_edit.setText(info["value"] if info["value"] else "")
-            t = get_theme()
-            _base_style = (
-                f"QLineEdit {{"
-                f" border: none;"
-                f" border-radius: 0;"
-                f" background: transparent;"
-                f" padding: 0 8px;"
-                f" color: {t['text']};"
-                f"}}"
-                f"QLineEdit:focus {{"
-                f" background-color: {t['background_secondary']};"
-                f"}}"
+    def get_table_state(self):
+        state = []
+        for r in range(self.table_widget.rowCount()):
+            cat_item = self.table_widget.item(r, 1)
+            obj_item = self.table_widget.item(r, 2)
+            img_item = self.table_widget.item(r, 3)
+            label = cat_item.text() if cat_item else ""
+            objects = obj_item.text() if obj_item else "0"
+            images = img_item.text() if img_item else "0"
+
+            val_edit = self._get_value_edit(r)
+            del_cb = self._get_delete_checkbox(r)
+            vis_cb = self._get_visible_checkbox(r)
+            color_btn = self._get_color_button(r)
+
+            state.append(
+                {
+                    "label": label,
+                    "objects": objects,
+                    "images": images,
+                    "value": val_edit.text() if val_edit else "",
+                    "delete": del_cb.isChecked() if del_cb else False,
+                    "visible": vis_cb.isChecked() if vis_cb else True,
+                    "color": color_btn.color if color_btn else None,
+                }
             )
-            if info["delete"]:
-                value_edit.setReadOnly(True)
-                value_edit.setStyleSheet(
-                    _base_style
-                    + f"QLineEdit {{ background-color: {t['surface']};"
-                    f" color: {t['text_secondary']}; }}"
-                )
-            else:
-                value_edit.setStyleSheet(_base_style)
+        return state
 
-            value_edit.textChanged.connect(
-                lambda text, r=i: self.on_value_edit_changed(r, text)
+    def move_up(self):
+        row = self.table_widget.currentRow()
+        if row <= 0:
+            return
+        state = self.get_table_state()
+        state[row], state[row - 1] = state[row - 1], state[row]
+        self.populate_from_state(state)
+        self.table_widget.selectRow(row - 1)
+
+    def move_down(self):
+        row = self.table_widget.currentRow()
+        if row < 0 or row >= self.table_widget.rowCount() - 1:
+            return
+        state = self.get_table_state()
+        state[row], state[row + 1] = state[row + 1], state[row]
+        self.populate_from_state(state)
+        self.table_widget.selectRow(row + 1)
+
+    def merge_selected_label(self):
+        row = self.table_widget.currentRow()
+        if row < 0:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Merge Class"),
+                self.tr("Please select a class row from the table to merge."),
             )
+            return
 
-            visible_checkbox = QCheckBox()
-            visible_checkbox.setChecked(info.get("visible", True))
-            visible_checkbox.stateChanged.connect(
-                lambda state, row=i: self.on_visible_checkbox_changed(
-                    row, state
-                )
+        source_label = self.table_widget.item(row, 1).text()
+        obj_count = self.table_widget.item(row, 2).text()
+        img_count = self.table_widget.item(row, 3).text()
+
+        available_targets = []
+        for r in range(self.table_widget.rowCount()):
+            lbl = self.table_widget.item(r, 1).text()
+            if lbl != source_label:
+                available_targets.append(lbl)
+
+        if not available_targets:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Merge Class"),
+                self.tr("There are no other classes available to merge into."),
             )
+            return
 
-            visible_container = QtWidgets.QWidget()
-            visible_layout = QtWidgets.QHBoxLayout(visible_container)
-            visible_layout.setContentsMargins(0, 0, 0, 0)
-            visible_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            visible_layout.addWidget(visible_checkbox)
+        target_label, ok = QtWidgets.QInputDialog.getItem(
+            self,
+            self.tr("Merge Class"),
+            self.tr(
+                f"Merge class '{source_label}' ({obj_count} annotations in {img_count} images) into:"
+            ),
+            available_targets,
+            0,
+            False,
+        )
+        if not ok or not target_label:
+            return
 
-            color = QColor(*info["color"])
-            color.setAlpha(info["opacity"])
-            color_button = LabelColorButton(color, self)
-            color_button.setParent(self.table_widget)
-            self.table_widget.setItem(i, 0, class_item)
-            self.table_widget.setCellWidget(i, 1, delete_checkbox)
-            self.table_widget.setCellWidget(i, 2, value_edit)
-            self.table_widget.setCellWidget(i, 3, visible_container)
-            self.table_widget.setCellWidget(i, 4, color_button)
+        confirm = QtWidgets.QMessageBox.question(
+            self,
+            self.tr("Confirm Merge"),
+            self.tr(
+                f"Are you sure you want to merge all occurrences of '{source_label}' into '{target_label}'?\n\n"
+                f"This will update all JSON annotation files in the project and remove '{source_label}'.\n"
+                f"This action cannot be undone."
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if confirm != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+
+        merged_shapes = 0
+        merged_files = 0
+        for image_file in self.image_file_list:
+            label_dir, filename = os.path.split(image_file)
+            if self.parent.output_dir:
+                label_dir = self.parent.output_dir
+            label_file = os.path.join(
+                label_dir, os.path.splitext(filename)[0] + ".json"
+            )
+            if not os.path.exists(label_file):
+                continue
+            try:
+                with open(label_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                shapes = data.get("shapes", [])
+                file_changed = False
+                for shape in shapes:
+                    if shape.get("label") == source_label:
+                        shape["label"] = target_label
+                        file_changed = True
+                        merged_shapes += 1
+                if file_changed:
+                    merged_files += 1
+                    with open(label_file, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.error(f"Error merging label in {label_file}: {e}")
+
+        # Update active shapes on parent canvas
+        if hasattr(self.parent, "canvas") and hasattr(
+            self.parent.canvas, "shapes"
+        ):
+            for shape in self.parent.canvas.shapes:
+                if shape.label == source_label:
+                    shape.label = target_label
+                    self.parent._update_shape_color(shape)
+            self.parent.canvas.update()
+
+        # Remove from label_info, config, and unique_label_list
+        if source_label in self.parent.label_info:
+            del self.parent.label_info[source_label]
+        self.parent.unique_label_list.remove_items_by_label(source_label)
+        self.parent.unique_label_list.refresh_indices()
+        if hasattr(self.parent, "_config") and isinstance(
+            self.parent._config.get("labels"), list
+        ):
+            if source_label in self.parent._config["labels"]:
+                while source_label in self.parent._config["labels"]:
+                    self.parent._config["labels"].remove(source_label)
+                from anylabeling.config import save_config
+
+                save_config(self.parent._config)
+        if hasattr(self.parent, "label_dialog"):
+            self.parent.label_dialog.remove_label_history(source_label)
+        if source_label in self.ordered_labels:
+            self.ordered_labels.remove(source_label)
+        if hasattr(self.parent, "_refresh_shape_filters"):
+            self.parent._refresh_shape_filters()
+
+        # Re-initialize and refresh table
+        self.init_label_info()
+        self.populate_table()
+
+        popup = Popup(
+            self.tr(
+                f"Successfully merged '{source_label}' into '{target_label}'.\n"
+                f"{merged_shapes} shapes across {merged_files} files updated."
+            ),
+            self.parent,
+            icon=new_icon_path("copy-green", "svg"),
+        )
+        popup.show_popup(self.parent)
 
     def _get_value_edit(self, row):
-        return self.table_widget.cellWidget(row, 2)
+        return self.table_widget.cellWidget(row, 4)
+
+    def _get_color_button(self, row):
+        return self.table_widget.cellWidget(row, 5)
+
+    def _get_visible_checkbox(self, row):
+        container = self.table_widget.cellWidget(row, 6)
+        if container and container.layout():
+            return container.layout().itemAt(0).widget()
+        return None
+
+    def _get_delete_checkbox(self, row):
+        container = self.table_widget.cellWidget(row, 7)
+        if container and container.layout():
+            return container.layout().itemAt(0).widget()
+        return container
 
     def change_color(self, button):
         row = self.table_widget.indexAt(button.pos()).row()
-        current_color = self.parent.label_info[
-            self.table_widget.item(row, 0).text()
-        ]["color"]
+        label = self.table_widget.item(row, 1).text()
+        current_color = self.parent.label_info.get(label, {}).get("color")
+        if not current_color:
+            current_color = list(self.parent._get_rgb_by_label(label))
         color = QColorDialog.getColor(QColor(*current_color), self)
         if color.isValid():
-            self.parent.label_info[self.table_widget.item(row, 0).text()][
-                "color"
-            ] = [color.red(), color.green(), color.blue()]
-            self.parent.label_info[self.table_widget.item(row, 0).text()][
-                "opacity"
-            ] = color.alpha()
+            self.parent.label_info[label]["color"] = [
+                color.red(),
+                color.green(),
+                color.blue(),
+            ]
+            self.parent.label_info[label]["opacity"] = color.alpha()
             button.set_color(color)
 
     def on_delete_checkbox_changed(self, row, state):
@@ -990,28 +1412,25 @@ class LabelModifyDialog(QtWidgets.QDialog):
         if state == QtCore.Qt.CheckState.Checked:
             value_edit.setReadOnly(True)
             value_edit.setStyleSheet(
-                _base + f"QLineEdit {{ background-color: {t['surface']};"
-                f" color: {t['text_secondary']}; }}"
+                _base
+                + f"QLineEdit {{ background-color: {t['surface']}; color: {t['text_secondary']}; }}"
             )
         else:
             value_edit.setReadOnly(False)
             value_edit.setStyleSheet(_base)
 
     def on_value_edit_changed(self, row, text):
-        delete_checkbox = self.table_widget.cellWidget(row, 1)
-        delete_checkbox.setEnabled(not bool(text))
+        delete_checkbox = self._get_delete_checkbox(row)
+        if delete_checkbox:
+            delete_checkbox.setEnabled(not bool(text))
 
     def on_visible_checkbox_changed(self, row, state):
         pass
 
     def on_item_double_clicked(self, item: QTableWidgetItem) -> None:
-        """Copy label text to clipboard on double-click.
-
-        Args:
-            item: The table widget item that was double-clicked.
-        """
+        """Copy label text to clipboard on double-click."""
         column = item.column()
-        if column == 0:
+        if column == 1:
             label_text = item.text()
             clipboard = QApplication.clipboard()
             clipboard.setText(label_text)
@@ -1025,7 +1444,7 @@ class LabelModifyDialog(QtWidgets.QDialog):
 
     def show_context_menu(self, pos):
         column = self.table_widget.columnAt(pos.x())
-        if column != 3:
+        if column != 6:
             return
 
         menu = QtWidgets.QMenu(self)
@@ -1040,23 +1459,15 @@ class LabelModifyDialog(QtWidgets.QDialog):
 
     def select_all_visible(self):
         for i in range(self.table_widget.rowCount()):
-            visible_container = self.table_widget.cellWidget(i, 3)
-            if visible_container:
-                visible_checkbox = (
-                    visible_container.layout().itemAt(0).widget()
-                )
-                if visible_checkbox:
-                    visible_checkbox.setChecked(True)
+            cb = self._get_visible_checkbox(i)
+            if cb:
+                cb.setChecked(True)
 
     def deselect_all_visible(self):
         for i in range(self.table_widget.rowCount()):
-            visible_container = self.table_widget.cellWidget(i, 3)
-            if visible_container:
-                visible_checkbox = (
-                    visible_container.layout().itemAt(0).widget()
-                )
-                if visible_checkbox:
-                    visible_checkbox.setChecked(False)
+            cb = self._get_visible_checkbox(i)
+            if cb:
+                cb.setChecked(False)
 
     def confirm_changes(self, start_index: int = -1, end_index: int = -1):
         total_num = self.table_widget.rowCount()
@@ -1064,47 +1475,78 @@ class LabelModifyDialog(QtWidgets.QDialog):
             self.reject()
             return
 
-        # Temporary dictionary to handle changes
         updated_label_info = {}
+        ordered_classes = []
 
         for i in range(total_num):
-            label = self.table_widget.item(i, 0).text()
-            delete_checkbox = self.table_widget.cellWidget(i, 1)
+            cat_item = self.table_widget.item(i, 1)
+            if not cat_item:
+                continue
+            label = cat_item.text()
+            delete_checkbox = self._get_delete_checkbox(i)
             value_edit = self._get_value_edit(i)
+            visible_checkbox = self._get_visible_checkbox(i)
 
-            is_delete = delete_checkbox.isChecked()
-            new_value = value_edit.text()
+            is_delete = (
+                delete_checkbox.isChecked() if delete_checkbox else False
+            )
+            new_value = value_edit.text().strip() if value_edit else ""
+            is_visible = (
+                visible_checkbox.isChecked() if visible_checkbox else True
+            )
 
-            visible_container = self.table_widget.cellWidget(i, 3)
-            visible_checkbox = visible_container.layout().itemAt(0).widget()
-            is_visible = visible_checkbox.isChecked()
+            if label not in self.parent.label_info:
+                self.parent.label_info[label] = {}
 
-            # Update the label info in the temporary dictionary
             self.parent.label_info[label]["delete"] = is_delete
             self.parent.label_info[label]["value"] = new_value
             self.parent.label_info[label]["visible"] = is_visible
 
-            # Update the color
-            color = self.parent.label_info[label]["color"]
-            self.parent.unique_label_list.update_item_color(
-                label, color, self.opacity
-            )
+            color = self.parent.label_info[label].get("color")
+            if color:
+                self.parent.unique_label_list.update_item_color(
+                    label, color, self.opacity
+                )
 
-            # Handle delete and change of labels
             if is_delete:
                 self.parent.unique_label_list.remove_items_by_label(label)
-                self.parent.label_dialog.remove_label_history(label)
+                if hasattr(self.parent, "label_dialog"):
+                    self.parent.label_dialog.remove_label_history(label)
                 continue
             elif new_value:
                 self.parent.unique_label_list.remove_items_by_label(label)
-                self.parent.label_dialog.remove_label_history(label)
-                self.parent.label_dialog.add_label_history(new_value)
+                if hasattr(self.parent, "label_dialog"):
+                    self.parent.label_dialog.remove_label_history(label)
+                    self.parent.label_dialog.add_label_history(new_value)
                 updated_label_info[new_value] = self.parent.label_info[label]
+                ordered_classes.append(new_value)
             else:
                 updated_label_info[label] = self.parent.label_info[label]
+                ordered_classes.append(label)
 
         if self.modify_label(start_index, end_index):
             self.parent.label_info = updated_label_info
+
+            # Reconstruct sidebar unique_label_list in exact newly ordered sequence
+            self.parent.unique_label_list.clear()
+            for idx, lbl in enumerate(ordered_classes):
+                item = self.parent.unique_label_list.create_item_from_label(
+                    lbl
+                )
+                self.parent.unique_label_list.addItem(item)
+                rgb = self.parent._get_rgb_by_label(lbl)
+                self.parent.unique_label_list.set_item_label(
+                    item, lbl, rgb, self.opacity, index=idx
+                )
+            self.parent.unique_label_list.refresh_indices()
+
+            # Save newly ordered classes to config
+            if hasattr(self.parent, "_config"):
+                self.parent._config["labels"] = ordered_classes
+                from anylabeling.config import save_config
+
+                save_config(self.parent._config)
+
             if hasattr(self.parent, "apply_label_visibility"):
                 self.parent.apply_label_visibility()
             popup = Popup(
@@ -1144,6 +1586,9 @@ class LabelModifyDialog(QtWidgets.QDialog):
                 src_shapes, dst_shapes = data["shapes"], []
                 for shape in src_shapes:
                     label = shape["label"]
+                    if label not in self.parent.label_info:
+                        dst_shapes.append(shape)
+                        continue
                     if self.parent.label_info[label][
                         "delete"
                     ] and not shape.get("locked", False):
@@ -1159,65 +1604,6 @@ class LabelModifyDialog(QtWidgets.QDialog):
             logger.error(f"Error occurred while updating labels: {e}")
             return False
 
-    def init_label_info(self):
-        classes = set()
-
-        for image_file in self.image_file_list:
-            label_dir, filename = os.path.split(image_file)
-            if self.parent.output_dir:
-                label_dir = self.parent.output_dir
-            label_file = os.path.join(
-                label_dir, os.path.splitext(filename)[0] + ".json"
-            )
-            if not os.path.exists(label_file):
-                continue
-            with open(label_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            shapes = data.get("shapes", [])
-            for shape in shapes:
-                label = shape["label"]
-                classes.add(label)
-
-        for i in range(self.parent.unique_label_list.count()):
-            item = self.parent.unique_label_list.item(i)
-            if item:
-                label_text = item.text()
-                if label_text:
-                    classes.add(label_text)
-
-        for c in sorted(classes):
-            # Update unique label list
-            if not self.parent.unique_label_list.find_items_by_label(c):
-                unique_label_item = (
-                    self.parent.unique_label_list.create_item_from_label(c)
-                )
-                self.parent.unique_label_list.addItem(unique_label_item)
-                rgb = self.parent._get_rgb_by_label(c)
-                self.parent.unique_label_list.set_item_label(
-                    unique_label_item, c, rgb, self.opacity
-                )
-            else:
-                rgb = self.parent._get_rgb_by_label(c)
-            # Update label info
-            # Preserve existing color if label already exists in label_info
-            if c in self.parent.label_info:
-                color = self.parent.label_info[c].get("color", list(rgb))
-                opacity = self.parent.label_info[c].get(
-                    "opacity", self.opacity
-                )
-                visible = self.parent.label_info[c].get("visible", True)
-            else:
-                color = list(rgb)
-                opacity = self.opacity
-                visible = True
-            self.parent.label_info[c] = dict(
-                delete=False,
-                value=None,
-                color=color,
-                opacity=opacity,
-                visible=visible,
-            )
-
     def update_range(self):
         from_value = (
             int(self.from_input.text())
@@ -1232,10 +1618,10 @@ class LabelModifyDialog(QtWidgets.QDialog):
         if (
             (from_value > to_value)
             or (from_value < 1)
-            or (to_value > len(self.image_file_list))
+            or (to_value > max(1, len(self.image_file_list)))
         ):
             self.from_input.setValue(1)
-            self.to_input.setValue(len(self.image_file_list))
+            self.to_input.setValue(max(1, len(self.image_file_list)))
             QtWidgets.QMessageBox.information(
                 self,
                 self.tr("Invalid Range"),
