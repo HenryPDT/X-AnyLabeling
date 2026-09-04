@@ -90,6 +90,7 @@
 7. [Image Classifier](./docs/en/image_classifier.md)
 8. [Video Classifier](./docs/en/video_classifier.md)
 9. [Document Parsing and Intelligent Text Recognition](./docs/en/paddle_ocr.md)
+10. [Frequently Asked Questions (FAQ)](./docs/en/faq.md)
 
 ## Examples
 

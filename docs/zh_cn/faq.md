@@ -442,8 +442,21 @@ pip install --upgrade onnx
 <details>
 <summary>Q: 运行 GPU 版本时出现 `FAIL : Failed to load library libonnxruntime_providers_cuda.so with error: libcudnn.so.9: cannot open shared object file: No such file or directory` 错误</summary>
 
-可参考[此教程](../zh_cn/get_started.md)中 "步骤 0. 安装 ONNX Runtime" 安装匹配版本。
-此外，可查看[#834](https://github.com/CVHub520/X-AnyLabeling/issues/834)。
+这通常是因为环境中缺少 cuDNN 9 运行时动态库。推荐直接在虚拟环境中安装 NVIDIA 官方的 cuDNN wheel（无需 root 权限）：
+
+```bash
+# CUDA 12.x
+uv pip install nvidia-cudnn-cu12
+echo 'export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH' >> .venv/bin/activate
+source .venv/bin/activate
+
+# CUDA 13.x
+uv pip install nvidia-cudnn-cu13
+echo 'export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH' >> .venv/bin/activate
+source .venv/bin/activate
+```
+
+更多背景与系统级安装可查看[#834](https://github.com/CVHub520/X-AnyLabeling/issues/834)与[#1014](https://github.com/CVHub520/X-AnyLabeling/issues/1014)。
 </details>
 
 <details>

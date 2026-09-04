@@ -236,6 +236,23 @@ xanylabeling convert <task>  # Show detailed help and examples for a specific ta
 | CUDA 12.x | `gpu` | `>= 1.18.1, < 1.27.0` | 9.x |
 | CUDA 13.x | `gpu-cu13` | `>= 1.27.0, < 1.28.0` | 9.x |
 
+> [!TIP]
+> **Standalone cuDNN Installation via Pip (No Root / Sudo Required)**:
+> If your system does not have cuDNN installed globally in system paths, you can install the official NVIDIA cuDNN runtime wheel directly into your virtual environment and configure `LD_LIBRARY_PATH`:
+>
+> ```bash
+> # For CUDA 12.x
+> uv pip install nvidia-cudnn-cu12
+> echo 'export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH' >> .venv/bin/activate
+> source .venv/bin/activate
+>
+> # For CUDA 13.x
+> uv pip install nvidia-cudnn-cu13
+> echo 'export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH' >> .venv/bin/activate
+> source .venv/bin/activate
+> ```
+> This resolves `libcudnn.so.9: cannot open shared object file` errors without requiring system-level administrator privileges.
+
 > [!WARNING]
 > Install only one of the `cpu`, `gpu-cu11`, `gpu`, or `gpu-cu13` extras in an environment. CUDA 11.x additionally requires `onnx >= 1.15.0, < 1.16.1`.
 
@@ -287,7 +304,7 @@ Therefore, it is recommended to choose between running from source code and usin
 
 ## 2. Usage
 
-For detailed instructions on how to use X-AnyLabeling, please refer to the corresponding [User Guide](./user_guide.md).
+For detailed instructions on how to use X-AnyLabeling, please refer to the corresponding [User Guide](./user_guide.md). If you encounter common setup or runtime issues, see the [Frequently Asked Questions (FAQ)](./faq.md).
 
 ## 3. Packaging and Compilation
 

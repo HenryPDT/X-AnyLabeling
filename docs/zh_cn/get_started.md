@@ -234,6 +234,23 @@ xanylabeling convert <task>  # 查看特定转换任务的详细帮助和使用�
 | CUDA 12.x | `gpu` | `>= 1.18.1, < 1.27.0` | 9.x |
 | CUDA 13.x | `gpu-cu13` | `>= 1.27.0, < 1.28.0` | 9.x |
 
+> [!TIP]
+> **免 root/sudo 独立安装 cuDNN（Pip Wheel 方案）**：
+> 如果系统中未全局安装 cuDNN，可直接在当前虚拟环境中安装 NVIDIA 官方 cuDNN 运行库，并配置 `LD_LIBRARY_PATH`：
+>
+> ```bash
+> # CUDA 12.x 环境
+> uv pip install nvidia-cudnn-cu12
+> echo 'export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH' >> .venv/bin/activate
+> source .venv/bin/activate
+>
+> # CUDA 13.x 环境
+> uv pip install nvidia-cudnn-cu13
+> echo 'export LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH' >> .venv/bin/activate
+> source .venv/bin/activate
+> ```
+> 这样无需管理员权限即可自动解决 `libcudnn.so.9: cannot open shared object file` 报错。
+
 > [!WARNING]
 > 在同一个环境中只能安装 `cpu`、`gpu-cu11`、`gpu` 或 `gpu-cu13` 其中一个依赖选项。CUDA 11.x 还要求 `onnx >= 1.15.0, < 1.16.1`。
 
