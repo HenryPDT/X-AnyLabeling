@@ -2435,6 +2435,22 @@ class ModelManager(QObject):
             return
         self.loaded_model_config["model"].set_auto_labeling_iou(value)
 
+    def set_auto_labeling_containment(self, value):
+        """Set same-label containment threshold on the loaded model."""
+        if self.loaded_model_config is None:
+            return
+        model = self.loaded_model_config.get("model")
+        if model and hasattr(model, "set_auto_labeling_containment"):
+            model.set_auto_labeling_containment(value)
+
+    def set_auto_labeling_containment_keep(self, mode):
+        """Set containment keep mode (``score`` or ``area``)."""
+        if self.loaded_model_config is None:
+            return
+        model = self.loaded_model_config.get("model")
+        if model and hasattr(model, "set_auto_labeling_containment_keep"):
+            model.set_auto_labeling_containment_keep(mode)
+
     def set_auto_labeling_preserve_existing_annotations_state(self, state):
         if (
             self.loaded_model_config is not None

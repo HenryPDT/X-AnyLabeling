@@ -102,6 +102,9 @@ class AutoLabelingWidget(QWidget):
         "edit_conf",
         "input_iou",
         "edit_iou",
+        "input_containment",
+        "edit_containment",
+        "containment_keep_combobox",
         "output_label",
         "output_select_combobox",
         "toggle_preserve_existing_annotations",
@@ -293,6 +296,24 @@ class AutoLabelingWidget(QWidget):
         # --- Configuration for: edit_iou ---
         self.edit_iou.setStyleSheet(get_double_spinbox_style())
         self.edit_iou.valueChanged.connect(self.on_iou_value_changed)
+
+        # --- Configuration for: containment controls ---
+        self.input_containment.setText(self.tr("Contain"))
+        self.edit_containment.setStyleSheet(get_double_spinbox_style())
+        self.edit_containment.valueChanged.connect(
+            self.on_containment_value_changed
+        )
+        self.containment_keep_combobox.clear()
+        self.containment_keep_combobox.addItem(
+            self.tr("Keep larger"), userData="area"
+        )
+        self.containment_keep_combobox.addItem(
+            self.tr("Keep higher score"), userData="score"
+        )
+        self.containment_keep_combobox.setCurrentIndex(0)
+        self.containment_keep_combobox.currentIndexChanged.connect(
+            self.on_containment_keep_changed
+        )
 
         # --- Configuration for: edit_text ---
         self.edit_text.setStyleSheet(get_lineedit_style())
@@ -1117,6 +1138,14 @@ class AutoLabelingWidget(QWidget):
             self.update_groundingdino_mode_ui()
         elif model_config.get("type") == "remote_server":
             self.update_remote_server_mode_ui()
+        elif model_config.get("type") == "segment_anything_3":
+            self.edit_containment.setValue(
+                model_config.get("containment_threshold", 0.5)
+            )
+            self.on_containment_value_changed(self.edit_containment.value())
+            self._set_containment_keep_mode(
+                model_config.get("containment_keep", "area")
+            )
 
     def update_upn_mode_ui(self):
         """Update UPN mode combobox to reflect current backend state"""
@@ -1198,9 +1227,12 @@ class AutoLabelingWidget(QWidget):
             "edit_text",
             "edit_conf",
             "edit_iou",
+            "edit_containment",
+            "containment_keep_combobox",
             "input_box_thres",
             "input_conf",
             "input_iou",
+            "input_containment",
             "output_label",
             "output_select_combobox",
             "toggle_preserve_existing_annotations",
@@ -1259,6 +1291,27 @@ class AutoLabelingWidget(QWidget):
     def on_iou_value_changed(self, value):
         """Handle iou value changed"""
         self.model_manager.set_auto_labeling_iou(value)
+
+    def on_containment_value_changed(self, value):
+        """Handle containment threshold changed."""
+        self.model_manager.set_auto_labeling_containment(value)
+
+    def on_containment_keep_changed(self, _index=None):
+        """Handle nested-box keep mode changed."""
+        mode = self.containment_keep_combobox.currentData()
+        if mode:
+            self.model_manager.set_auto_labeling_containment_keep(mode)
+
+    def _set_containment_keep_mode(self, mode):
+        mode = (mode or "area").lower()
+        index = self.containment_keep_combobox.findData(mode)
+        if index < 0:
+            index = self.containment_keep_combobox.findData("area")
+        if index >= 0:
+            self.containment_keep_combobox.blockSignals(True)
+            self.containment_keep_combobox.setCurrentIndex(index)
+            self.containment_keep_combobox.blockSignals(False)
+        self.on_containment_keep_changed()
 
     def _on_toggle_preserve_existing_annotations_toggled(self, checked):
         """Handle toggle button state change - update UI and notify backend"""
@@ -1536,6 +1589,7 @@ class AutoLabelingWidget(QWidget):
                 self.update_task_mode_ui(available_tasks)
             else:
                 self.remote_task_select_combobox.hide()
+            self._enable_client_side_iou_for_remote_sam3(model_id, model_info)
 
     def update_remote_server_mode_ui(self):
         """Update remote server combobox with available models"""
@@ -1575,6 +1629,9 @@ class AutoLabelingWidget(QWidget):
                 self.update_task_mode_ui(available_tasks)
             else:
                 self.remote_task_select_combobox.hide()
+            self._enable_client_side_iou_for_remote_sam3(
+                first_model_id, model_info
+            )
         else:
             for widget_name in self.supported_remote_widgets:
                 widget = getattr(self, widget_name, None)
@@ -1612,6 +1669,9 @@ class AutoLabelingWidget(QWidget):
         )
         if task_info:
             self.update_task_widgets(task_info)
+            self._enable_client_side_iou_for_remote_sam3(
+                current_model_id, model_info
+            )
         else:
             logger.warning(f"Task info not found for task_id: {task_id}")
 
@@ -1636,6 +1696,15 @@ class AutoLabelingWidget(QWidget):
         first_task_id = available_tasks[0].get("id")
         self.model_manager.set_task(first_task_id)
         self.update_task_widgets(available_tasks[0])
+        current_model_id = (
+            self.model_manager.get_remote_server_current_model_id()
+        )
+        available_models = self._filter_remote_server_available_models(
+            self.model_manager.get_remote_server_available_models()
+        )
+        self._enable_client_side_iou_for_remote_sam3(
+            current_model_id, available_models.get(current_model_id)
+        )
 
     def update_task_widgets(self, task_info):
         """Update widget visibility based on selected task"""
@@ -1646,12 +1715,56 @@ class AutoLabelingWidget(QWidget):
             if widget:
                 widget.hide()
 
-        for widget_name, widget_info in task_info["active_widgets"].items():
+        active_widgets = dict(task_info.get("active_widgets") or {})
+        current_model_id = (
+            self.model_manager.get_remote_server_current_model_id()
+        )
+        available_models = self._filter_remote_server_available_models(
+            self.model_manager.get_remote_server_available_models()
+        )
+        model_info = available_models.get(current_model_id)
+        from anylabeling.services.auto_labeling.remote_server import (
+            _CLIENT_SIDE_CONTAINMENT_DEFAULT,
+            _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT,
+            _CLIENT_SIDE_IOU_DEFAULT,
+            is_client_side_iou_remote_model,
+        )
+
+        if is_client_side_iou_remote_model(current_model_id, model_info):
+            active_widgets.setdefault("input_iou", {})
+            active_widgets.setdefault(
+                "edit_iou", {"value": _CLIENT_SIDE_IOU_DEFAULT}
+            )
+            active_widgets.setdefault("input_containment", {})
+            active_widgets.setdefault(
+                "edit_containment",
+                {"value": _CLIENT_SIDE_CONTAINMENT_DEFAULT},
+            )
+            active_widgets.setdefault(
+                "containment_keep_combobox",
+                {"value": _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT},
+            )
+
+        for widget_name, widget_info in active_widgets.items():
             widget = getattr(self, widget_name, None)
             if not widget:
                 continue
 
             widget.show()
+            if "value" in widget_info:
+                value = widget_info["value"]
+                if widget_name == "containment_keep_combobox":
+                    self._set_containment_keep_mode(value)
+                elif hasattr(widget, "setValue"):
+                    widget.setValue(value)
+                elif hasattr(widget, "setChecked"):
+                    widget.setChecked(value)
+                elif hasattr(widget, "setText"):
+                    widget.setText(str(value))
+                if widget_name == "edit_iou":
+                    self.on_iou_value_changed(value)
+                elif widget_name == "edit_containment":
+                    self.on_containment_value_changed(value)
             if "placeholder" in widget_info and hasattr(
                 widget, "setPlaceholderText"
             ):
@@ -1675,8 +1788,11 @@ class AutoLabelingWidget(QWidget):
             return
 
         model_info = available_models[model_id]
-        widgets_config = model_info.get("widgets", [])
-        available_tasks = model_info.get("available_tasks", [])
+        widgets_config = list(model_info.get("widgets", []) or [])
+        available_tasks = model_info.get("available_tasks") or []
+        widgets_config = self._inject_client_side_iou_widgets(
+            model_id, model_info, widgets_config
+        )
 
         for widget_name in self.supported_remote_widgets:
             widget = getattr(self, widget_name, None)
@@ -1703,21 +1819,121 @@ class AutoLabelingWidget(QWidget):
                     elif hasattr(widget, "setText"):
                         widget.setText(str(widget_value))
 
-                    if widget_name == "edit_conf":
-                        self.on_conf_value_changed(widget_value)
-                    elif widget_name == "edit_iou":
-                        self.on_iou_value_changed(widget_value)
-                    elif widget_name == "mask_fineness_slider":
-                        self.on_mask_fineness_changed(widget_value)
-                    elif widget_name == "toggle_preserve_existing_annotations":
-                        self._on_toggle_preserve_existing_annotations_toggled(
-                            widget_value
-                        )
+                    self._apply_remote_widget_value(widget_name, widget_value)
 
                 if widget_placeholder is not None and hasattr(
                     widget, "setPlaceholderText"
                 ):
                     widget.setPlaceholderText(widget_placeholder)
+
+        if not available_tasks:
+            self._enable_client_side_iou_for_remote_sam3(model_id, model_info)
+
+    def _apply_remote_widget_value(self, widget_name, widget_value):
+        """Dispatch value change to corresponding auto-labeling handler."""
+        dispatch = {
+            "edit_conf": self.on_conf_value_changed,
+            "edit_iou": self.on_iou_value_changed,
+            "edit_containment": self.on_containment_value_changed,
+            "containment_keep_combobox": self._set_containment_keep_mode,
+            "mask_fineness_slider": self.on_mask_fineness_changed,
+            "toggle_preserve_existing_annotations": self._on_toggle_preserve_existing_annotations_toggled,
+        }
+        handler = dispatch.get(widget_name)
+        if handler:
+            handler(widget_value)
+
+    def _inject_client_side_iou_widgets(
+        self, model_id, model_info, widgets_config
+    ):
+        """Add client-side SAM3 cleanup controls into the widget show path."""
+        from anylabeling.services.auto_labeling.remote_server import (
+            _CLIENT_SIDE_CONTAINMENT_DEFAULT,
+            _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT,
+            _CLIENT_SIDE_IOU_DEFAULT,
+            is_client_side_iou_remote_model,
+        )
+
+        if not is_client_side_iou_remote_model(model_id, model_info):
+            return widgets_config
+
+        names = {
+            item.get("name")
+            for item in widgets_config
+            if isinstance(item, dict)
+        }
+        insert_at = len(widgets_config)
+        for index, item in enumerate(widgets_config):
+            if isinstance(item, dict) and item.get("name") == "edit_conf":
+                insert_at = index + 1
+                break
+
+        injected = []
+        if "input_iou" not in names:
+            injected.append({"name": "input_iou", "value": None})
+        if "edit_iou" not in names:
+            injected.append(
+                {"name": "edit_iou", "value": _CLIENT_SIDE_IOU_DEFAULT}
+            )
+        if "input_containment" not in names:
+            injected.append({"name": "input_containment", "value": None})
+        if "edit_containment" not in names:
+            injected.append(
+                {
+                    "name": "edit_containment",
+                    "value": _CLIENT_SIDE_CONTAINMENT_DEFAULT,
+                }
+            )
+        if "containment_keep_combobox" not in names:
+            injected.append(
+                {
+                    "name": "containment_keep_combobox",
+                    "value": _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT,
+                }
+            )
+        if not injected:
+            return widgets_config
+        return (
+            widgets_config[:insert_at] + injected + widgets_config[insert_at:]
+        )
+
+    def _enable_client_side_iou_for_remote_sam3(
+        self, model_id, model_info=None
+    ):
+        """Show client-side SAM3 cleanup controls; filtering runs locally."""
+        from anylabeling.services.auto_labeling.remote_server import (
+            _CLIENT_SIDE_CONTAINMENT_DEFAULT,
+            _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT,
+            _CLIENT_SIDE_IOU_DEFAULT,
+            is_client_side_iou_remote_model,
+        )
+
+        if not is_client_side_iou_remote_model(model_id, model_info):
+            return
+
+        self.input_iou.setVisible(True)
+        self.edit_iou.setVisible(True)
+        self.input_containment.setVisible(True)
+        self.edit_containment.setVisible(True)
+        self.containment_keep_combobox.setVisible(True)
+        self.input_iou.show()
+        self.edit_iou.show()
+        self.input_containment.show()
+        self.edit_containment.show()
+        self.containment_keep_combobox.show()
+        if self.edit_iou.value() <= 0:
+            self.edit_iou.setValue(_CLIENT_SIDE_IOU_DEFAULT)
+        if self.edit_containment.value() <= 0:
+            self.edit_containment.setValue(_CLIENT_SIDE_CONTAINMENT_DEFAULT)
+        self.on_iou_value_changed(self.edit_iou.value())
+        self.on_containment_value_changed(self.edit_containment.value())
+        if self.containment_keep_combobox.currentData() is None:
+            self._set_containment_keep_mode(
+                _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT
+            )
+        else:
+            self.on_containment_keep_changed()
+        self._queue_model_selection_scroll_area_height_update()
 
     def on_auto_decode_toggled(self):
         """Handle AMD button toggle"""

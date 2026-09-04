@@ -15,6 +15,31 @@ from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.utils.opencv import qt_img_to_rgb_cv_img
 from .model import Model
 from .types import AutoLabelingResult
+from anylabeling.views.labeling.utils.shape_geometry import (
+    apply_class_agnostic_shape_nms,
+)
+
+# Client-side cleanup defaults for remote SAM3 image models.
+_CLIENT_SIDE_IOU_DEFAULT = 0.5
+_CLIENT_SIDE_CONTAINMENT_DEFAULT = 0.5
+_CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT = "area"
+
+
+def is_client_side_iou_remote_model(model_id, model_info=None):
+    """Return True for remote SAM3 image models (not video)."""
+    if not model_id:
+        return False
+    model_id_l = str(model_id).lower()
+    if model_id_l == "segment_anything_3":
+        return True
+    if "segment_anything_3" in model_id_l and "video" not in model_id_l:
+        return True
+
+    info = model_info or {}
+    display = str(info.get("display_name", "")).lower()
+    if "segment anything 3" in display and "video" not in display:
+        return True
+    return False
 
 
 class RemoteServer(Model):
@@ -55,6 +80,8 @@ class RemoteServer(Model):
         self.marks = []
         self.conf_threshold = 0.0
         self.iou_threshold = 0.0
+        self.containment_threshold = 0.0
+        self.containment_keep = _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT
         self.epsilon_factor = 0.001
         self.replace = True
         self.reset_tracker_flag = False
@@ -80,6 +107,24 @@ class RemoteServer(Model):
         model_info = self.models_info.get(model_id, {})
         self.classes = model_info.get("classes", [])
         self.filter_classes = model_info.get("filter_classes")
+        if (
+            is_client_side_iou_remote_model(model_id, model_info)
+            and self.iou_threshold <= 0
+        ):
+            self.iou_threshold = _CLIENT_SIDE_IOU_DEFAULT
+        if (
+            is_client_side_iou_remote_model(model_id, model_info)
+            and self.containment_threshold <= 0
+        ):
+            self.containment_threshold = _CLIENT_SIDE_CONTAINMENT_DEFAULT
+            self.containment_keep = _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT
+
+    def uses_client_side_iou_nms(self):
+        """Whether current remote model applies client-side IoU NMS."""
+        model_info = self.models_info.get(self.current_model_id, {})
+        return is_client_side_iou_remote_model(
+            self.current_model_id, model_info
+        )
 
     def set_task(self, task_id):
         """Set task ID for the current model"""
@@ -138,6 +183,17 @@ class RemoteServer(Model):
     def set_auto_labeling_iou(self, iou_thresh):
         self.iou_threshold = iou_thresh
 
+    def set_auto_labeling_containment(self, value):
+        self.containment_threshold = value
+
+    def set_auto_labeling_containment_keep(self, mode):
+        mode = (mode or _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT).lower()
+        self.containment_keep = (
+            mode
+            if mode in {"score", "area"}
+            else _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT
+        )
+
     def set_auto_labeling_filter_classes(self, class_names):
         """Set the active remote class filter by name."""
         if not class_names or len(class_names) == len(self.classes):
@@ -175,35 +231,17 @@ class RemoteServer(Model):
             logger.info("Starting video propagation...")
             return self._handle_video_propagation()
 
-        if image_path and os.path.exists(image_path):
-            with open(image_path, "rb") as f:
-                img_base64 = base64.b64encode(f.read()).decode("utf-8")
-            ext = os.path.splitext(image_path)[1].lower()
-            mime_type = {
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-                ".bmp": "image/bmp",
-                ".webp": "image/webp",
-            }.get(ext, "image/jpeg")
-            img_data_uri = f"data:{mime_type};base64,{img_base64}"
-        else:
-            try:
-                cv_image = qt_img_to_rgb_cv_img(image, image_path)
-            except Exception as e:
-                logger.warning(f"Could not process image: {e}")
-                return AutoLabelingResult([], replace=self.replace)
-
-            cv_image_bgr = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-            is_success, buffer = cv2.imencode(".png", cv_image_bgr)
-            if not is_success:
-                raise ValueError("Failed to encode image.")
-            img_base64 = base64.b64encode(buffer).decode("utf-8")
-            img_data_uri = f"data:image/png;base64,{img_base64}"
+        try:
+            img_data_uri = self._image_to_data_uri(image, image_path)
+        except Exception as e:
+            logger.warning(f"Could not process image: {e}")
+            return AutoLabelingResult([], replace=self.replace)
 
         params = {}
         params["conf_threshold"] = self.conf_threshold
-        params["iou_threshold"] = self.iou_threshold
+        # SAM3 multi-prompt IoU NMS is applied client-side only.
+        if not self.uses_client_side_iou_nms():
+            params["iou_threshold"] = self.iou_threshold
         params["epsilon_factor"] = self.epsilon_factor
 
         if text_prompt:
@@ -261,6 +299,8 @@ class RemoteServer(Model):
 
                 shapes.append(shape)
 
+            shapes = self._apply_client_side_cleanup(shapes)
+
             description = data.get("description", "")
 
             replace = data.get("replace")
@@ -275,6 +315,49 @@ class RemoteServer(Model):
             logger.error(f"Remote server error: {e}")
             self.on_message(f"Remote server error: {e}")
             return AutoLabelingResult([], replace=self.replace)
+
+    def _apply_client_side_cleanup(self, shapes):
+        """Apply client-side NMS and containment cleanup for supported models."""
+        if not self.uses_client_side_iou_nms():
+            return shapes
+        shapes_before_nms = len(shapes)
+        shapes = apply_class_agnostic_shape_nms(
+            shapes,
+            self.iou_threshold,
+            containment_threshold=self.containment_threshold,
+            containment_keep=self.containment_keep,
+        )
+        logger.info(
+            "Remote SAM3 client-side cleanup | "
+            f"iou={self.iou_threshold:.4f} | "
+            f"contain={self.containment_threshold:.4f}/"
+            f"{self.containment_keep} | "
+            f"shapes={shapes_before_nms}->{len(shapes)}"
+        )
+        return shapes
+
+    def _image_to_data_uri(self, image, image_path):
+        """Encode QImage or disk image file to base64 data URI."""
+        if image_path and os.path.exists(image_path):
+            with open(image_path, "rb") as f:
+                img_base64 = base64.b64encode(f.read()).decode("utf-8")
+            ext = os.path.splitext(image_path)[1].lower()
+            mime_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".bmp": "image/bmp",
+                ".webp": "image/webp",
+            }.get(ext, "image/jpeg")
+            return f"data:{mime_type};base64,{img_base64}"
+
+        cv_image = qt_img_to_rgb_cv_img(image, image_path)
+        cv_image_bgr = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+        is_success, buffer = cv2.imencode(".png", cv_image_bgr)
+        if not is_success:
+            raise ValueError("Failed to encode image.")
+        img_base64 = base64.b64encode(buffer).decode("utf-8")
+        return f"data:image/png;base64,{img_base64}"
 
     def _handle_video_prompt(self, image_path, text_prompt):
         """Handle video prompt: initialize or reuse session and add prompt.
@@ -439,7 +522,7 @@ class RemoteServer(Model):
             self._reset_video_session()
             return AutoLabelingResult([], replace=self.replace)
 
-    def _handle_video_point_prompt(self, image_path):
+    def _handle_video_point_prompt(self, image_path):  # noqa: C901
         """Handle video point prompt: initialize or reuse session and add point prompt.
 
         Args:
@@ -631,7 +714,7 @@ class RemoteServer(Model):
             self._reset_video_session()
             return AutoLabelingResult([], replace=False)
 
-    def _handle_video_propagation(self):
+    def _handle_video_propagation(self):  # noqa: C901
         """Handle video propagation using SSE streaming."""
         if not self.video_session_id:
             logger.warning("No video session initialized")

@@ -270,6 +270,7 @@ _AUTO_LABELING_CONF_MODELS = [
 _AUTO_LABELING_IOU_MODELS = [
     "remote_server",
     "upn",
+    "segment_anything_3",
     "damo_yolo",
     "gold_yolo",
     "yolo_nas",

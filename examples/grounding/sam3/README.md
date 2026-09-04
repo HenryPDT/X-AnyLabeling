@@ -29,7 +29,8 @@ Launch the X-AnyLabeling client, press `Ctrl+A` or click the `AI` button in the 
 
 1. Enter object names in the text field (e.g., `person`, `car`, `bicycle`)
 2. Separate multiple classes with periods or commas: `person.car.bicycle` or `dog,cat,tree`
-3. Click **Send** to initiate detection
+3. Adjust **Confidence**, **IoU**, **Contain**, and keep mode as needed (cleanup runs on the client after the server returns shapes)
+4. Click **Send** to initiate detection
 
 #### Visual Prompting
 
@@ -77,6 +78,9 @@ You can also tune the following inference parameters:
 | Parameter | Default | Description |
 | --- | --- | --- |
 | `conf_threshold` | `0.5` | Minimum score to keep a predicted mask |
+| `iou_threshold` | `0.5` | Client-side class-agnostic IoU NMS across prompts (`0` disables IoU NMS only) |
+| `containment_threshold` | `0.5` | Same-label nested-box cleanup (`0` disables containment only). A box is nested when most of its area lies inside another same-label box. |
+| `containment_keep` | `area` | When nested same-label boxes conflict: `area` keeps the larger box, `score` keeps the higher-confidence box |
 | `epsilon` | `0.001` | Polygon approximation precision (smaller = finer contours) |
 
 ### Usage
@@ -88,8 +92,16 @@ Launch X-AnyLabeling, press `Ctrl+A` or click the `AI` button in the left menu b
 1. Enter one or more object names in the text field (e.g., `person`, `truck`)
 2. Separate multiple classes with commas or periods: `person,truck` or `person.truck`
 3. Select the desired output mode: **Polygon**, **Rectangle**, or **Rotation**
-4. Adjust **Confidence** and **Mask Fineness** as needed
+4. Adjust **Confidence**, **IoU**, **Contain**, and the keep mode (**Keep larger** / **Keep higher score**) as needed
 5. Click **Send** to run inference
+
+> [!NOTE]
+> Cleanup is **client-side** for both local ONNX and Remote-Server SAM3:
+> - **IoU**: class-agnostic near-duplicate boxes (e.g. `truck` vs `bus`)
+> - **Contain**: same-label nested boxes (e.g. a small `motorbike and person` inside a larger one)
+> - Keep mode chooses whether nested conflicts prefer the larger box or higher score
+>
+> Set either threshold to `0` to disable that filter only.
 
 > [!NOTE]
 > The image embedding is cached after the first run on each image, so repeated queries on the same image skip the encoder and only re-run the language encoder and decoder.

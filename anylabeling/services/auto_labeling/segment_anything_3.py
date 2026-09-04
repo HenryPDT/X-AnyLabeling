@@ -15,7 +15,10 @@ from anylabeling.views.labeling.utils.opencv import (
     get_bounding_boxes,
     qt_img_to_rgb_cv_img,
 )
-from anylabeling.services.auto_labeling.utils import calculate_rotation_theta
+from anylabeling.services.auto_labeling.utils import (
+    apply_class_agnostic_shape_nms,
+    calculate_rotation_theta,
+)
 
 from .model import Model
 from .lru_cache import LRUCache
@@ -51,7 +54,13 @@ class SegmentAnything3(Model):
             # "button_add_rect",
             # "button_clear",
             # "button_finish_object",
+            "input_conf",
             "edit_conf",
+            "input_iou",
+            "edit_iou",
+            "input_containment",
+            "edit_containment",
+            "containment_keep_combobox",
             "toggle_preserve_existing_annotations",
             "mask_fineness_slider",
             "mask_fineness_value_label",
@@ -121,6 +130,9 @@ class SegmentAnything3(Model):
         self.marks = []
         self.epsilon = self.config.get("epsilon", 0.001)
         self.conf_thres = self.config.get("conf_threshold", 0.5)
+        self.iou_thres = self.config.get("iou_threshold", 0.5)
+        self.containment_thres = self.config.get("containment_threshold", 0.5)
+        self.containment_keep = self.config.get("containment_keep", "area")
         self.replace = True
         self.cache_size = 10
         self.image_embedding_cache = LRUCache(self.cache_size)
@@ -133,6 +145,19 @@ class SegmentAnything3(Model):
         """Set auto labeling confidence threshold."""
         self.conf_thres = value
 
+    def set_auto_labeling_iou(self, value):
+        """Set class-agnostic IoU NMS threshold across prompts."""
+        self.iou_thres = value
+
+    def set_auto_labeling_containment(self, value):
+        """Set same-label nested-box containment threshold."""
+        self.containment_thres = value
+
+    def set_auto_labeling_containment_keep(self, mode):
+        """Set containment survivor mode: ``score`` or ``area``."""
+        mode = (mode or "area").lower()
+        self.containment_keep = mode if mode in {"score", "area"} else "area"
+
     def set_auto_labeling_preserve_existing_annotations_state(self, state):
         """Toggle the preservation of existing annotations."""
         self.replace = not state
@@ -140,6 +165,15 @@ class SegmentAnything3(Model):
     def set_mask_fineness(self, epsilon):
         """Set mask fineness epsilon value."""
         self.epsilon = epsilon
+
+    def apply_class_agnostic_nms(self, shapes):
+        """Apply IoU NMS and optional same-label containment cleanup."""
+        return apply_class_agnostic_shape_nms(
+            shapes,
+            self.iou_thres,
+            containment_threshold=self.containment_thres,
+            containment_keep=self.containment_keep,
+        )
 
     @staticmethod
     def split_text_prompts(text_prompt):
@@ -279,6 +313,11 @@ class SegmentAnything3(Model):
                 shapes.extend(self.post_process(masks, prompt, scores))
                 postprocess_time += time.perf_counter() - postprocess_start
 
+            nms_start = time.perf_counter()
+            shapes_before_nms = len(shapes)
+            shapes = self.apply_class_agnostic_nms(shapes)
+            postprocess_time += time.perf_counter() - nms_start
+
             output_counts = Counter(shape.label for shape in shapes)
             output_summary = ",".join(
                 f"{label}:{count}"
@@ -293,6 +332,8 @@ class SegmentAnything3(Model):
                 f"prompt={','.join(text_prompts)} | "
                 f"output_mode={self.output_mode} | "
                 f"conf={self.conf_thres:.4f} | "
+                f"iou={self.iou_thres:.4f} | "
+                f"contain={self.containment_thres:.4f}/{self.containment_keep} | "
                 f"preprocess={preprocess_time * 1000:.1f}ms | "
                 f"image_encoder={image_encoder_time * 1000:.1f}ms | "
                 f"cache={'hit' if cache_hit else 'miss'} | "
@@ -300,6 +341,7 @@ class SegmentAnything3(Model):
                 f"decoder={decoder_time * 1000:.1f}ms | "
                 f"postprocess={postprocess_time * 1000:.1f}ms | "
                 f"outputs={output_summary} | "
+                f"nms={shapes_before_nms}->{len(shapes)} | "
                 f"total={total_time * 1000:.1f}ms"
             )
         except Exception as e:  # noqa

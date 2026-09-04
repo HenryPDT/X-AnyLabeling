@@ -9,4 +9,7 @@ decoder_model_data_path: https://github.com/CVHub520/X-AnyLabeling/releases/down
 language_encoder_path: https://github.com/CVHub520/X-AnyLabeling/releases/download/v3.0.0/sam3_language_encoder.onnx
 language_encoder_data_path: https://github.com/CVHub520/X-AnyLabeling/releases/download/v3.0.0/sam3_language_encoder.onnx.data
 conf_threshold: 0.5
+iou_threshold: 0.5
+containment_threshold: 0.5
+containment_keep: area
 epsilon: 0.001
