@@ -210,6 +210,8 @@ shortcuts:
   toggle_auto_use_last_gid: Ctrl+Shift+G
   toggle_visibility_shapes: Ctrl+H
   toggle_compare_view: Ctrl+Alt+C
+  toggle_contour_snap: Alt+C
+  snap_selected_to_contour: Ctrl+Alt+S
 
   auto_label: Ctrl+A
   auto_run: Ctrl+B

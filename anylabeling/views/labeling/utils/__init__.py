@@ -93,3 +93,4 @@ from .upload import (
 )
 from .video import open_video_file
 from .visualization import save_visualization
+from .contour_snap import snap_bbox_to_contour, snap_obb_to_contour

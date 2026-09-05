@@ -11,6 +11,9 @@ from PyQt6.QtGui import QWheelEvent
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.views.labeling.utils.colormap import label_colormap
+from anylabeling.views.labeling.utils.shape_geometry import (
+    clamp_shape_to_image_bounds,
+)
 from anylabeling.views.labeling.utils.theme import get_theme
 
 from .. import utils
@@ -172,6 +175,7 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
         self._rotation_drag_shape = None
         self._rotation_drag_prev_angle = None
         self.snapping = True
+        self.contour_snap_enabled = False
         self.h_shape_is_selected = False
         self.h_shape_is_hovered = None
         self._selected_group_id = None
@@ -717,6 +721,103 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
                 rgb, dtype=np.uint8, copy=True, order="C"
             )
         return self._magic_wand_source
+
+    def get_image_numpy(self) -> np.ndarray | None:
+        """Return a cached contiguous RGB numpy array of the current pixmap."""
+        if self.pixmap is None or self.pixmap.isNull():
+            return None
+        return self._magic_wand_image()
+
+    def _snap_shape_to_contour(self, shape: Shape) -> bool:
+        """Snap bounding box or rotation shape to image contours.
+
+        Returns True if shape geometry was modified, False otherwise.
+        """
+        if shape is None or not shape.points:
+            return False
+        image_np = self.get_image_numpy()
+        if image_np is None:
+            return False
+
+        if shape.shape_type == "rectangle":
+            xs = [p.x() for p in shape.points]
+            ys = [p.y() for p in shape.points]
+            x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
+            sx1, sy1, sx2, sy2 = utils.snap_bbox_to_contour(
+                image_np, x1, y1, x2, y2
+            )
+            if (sx1, sy1, sx2, sy2) != (x1, y1, x2, y2):
+                if len(shape.points) == 2:
+                    shape.points = [
+                        QtCore.QPointF(sx1, sy1),
+                        QtCore.QPointF(sx2, sy2),
+                    ]
+                else:
+                    shape.points = [
+                        QtCore.QPointF(sx1, sy1),
+                        QtCore.QPointF(sx2, sy1),
+                        QtCore.QPointF(sx2, sy2),
+                        QtCore.QPointF(sx1, sy2),
+                    ]
+                return True
+        elif shape.shape_type == "rotation" and len(shape.points) >= 4:
+            orig_pts = [(p.x(), p.y()) for p in shape.points[:4]]
+            snapped_pts = utils.snap_obb_to_contour(image_np, orig_pts)
+            if snapped_pts != orig_pts:
+                shape.points = [QtCore.QPointF(x, y) for x, y in snapped_pts]
+                cx = (shape.points[0].x() + shape.points[2].x()) / 2.0
+                cy = (shape.points[0].y() + shape.points[2].y()) / 2.0
+                shape.center = QtCore.QPointF(cx, cy)
+                # Recompute direction from snapped geometry if available
+                try:
+                    if hasattr(shape, "calc_direction"):
+                        shape.direction = shape.calc_direction()
+                    elif hasattr(shape, "update_direction"):
+                        shape.update_direction()
+                except Exception:
+                    pass
+                return True
+        return False
+
+    def snap_selected_shapes(self) -> int:
+        """Snap currently selected rectangles and rotation shapes to image contours."""
+        if not self.selected_shapes:
+            return 0
+        # Store pre-snap state so single Undo restores original geometry
+        self.store_shapes()
+        modified_count = 0
+        for shape in self.selected_shapes:
+            if self._snap_shape_to_contour(shape):
+                modified_count += 1
+        if modified_count > 0:
+            self.update()
+        else:
+            # No change — drop the redundant backup we just pushed
+            try:
+                if self.shapes_backups:
+                    self.shapes_backups.pop()
+            except Exception:
+                pass
+        return modified_count
+
+    def snap_all_shapes(self) -> int:
+        """Snap all rectangles and rotation shapes to image contours."""
+        if not self.shapes:
+            return 0
+        self.store_shapes()
+        modified_count = 0
+        for shape in self.shapes:
+            if self._snap_shape_to_contour(shape):
+                modified_count += 1
+        if modified_count > 0:
+            self.update()
+        else:
+            try:
+                if self.shapes_backups:
+                    self.shapes_backups.pop()
+            except Exception:
+                pass
+        return modified_count
 
     def _update_magic_wand_preview(self, threshold: int) -> None:
         """Recompute and display the selected region at a new threshold."""
@@ -4862,6 +4963,16 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
             self.current.label = self.auto_labeling_mode.edit_mode
         if self.current.label is None:
             self.current.label = ""
+        shift_held = bool(
+            QtWidgets.QApplication.keyboardModifiers()
+            & QtCore.Qt.KeyboardModifier.ShiftModifier
+        )
+        if (
+            (self.contour_snap_enabled ^ shift_held)
+            and not self.is_auto_labeling
+            and self.current.shape_type in ["rectangle", "rotation"]
+        ):
+            self._snap_shape_to_contour(self.current)
         self.current.close()
         if self.current.shape_type == "rectangle":
             if not self.clip_rectangle_to_pixmap(self.current):
@@ -4877,6 +4988,16 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
                 self.drawing_polygon.emit(False)
                 self.update()
                 return
+        elif self.current.shape_type == "polygon":
+            if self.pixmap is not None:
+                if not clamp_shape_to_image_bounds(
+                    self.current, self.pixmap.width(), self.pixmap.height()
+                ):
+                    self.current = None
+                    self.set_hiding(False)
+                    self.drawing_polygon.emit(False)
+                    self.update()
+                    return
         elif self.current.shape_type == "cuboid":
             self.current.sync_cuboid_depth_vector()
 

@@ -21,7 +21,7 @@ class ToolBar(QtWidgets.QFrame):
         self._content_widget = QtWidgets.QWidget(self)
         self._content_layout = QtWidgets.QVBoxLayout(self._content_widget)
         self._content_layout.setSpacing(0)
-        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setContentsMargins(0, 2, 0, 2)
         layout.addWidget(
             self._content_widget, 0, QtCore.Qt.AlignmentFlag.AlignTop
         )
@@ -96,6 +96,9 @@ class ToolBar(QtWidgets.QFrame):
         for button in self.findChildren(QtWidgets.QToolButton):
             button.setIconSize(size)
 
+    def iconSize(self):
+        return self._icon_size
+
     def clear(self):
         for action in self.actions():
             self.removeAction(action)
@@ -133,6 +136,15 @@ class ToolBar(QtWidgets.QFrame):
             btn, 0, QtCore.Qt.AlignmentFlag.AlignCenter
         )
         return action
+
+    def widgetForAction(self, action):
+        for widget in self._owned_widgets:
+            if (
+                isinstance(widget, QtWidgets.QToolButton)
+                and widget.defaultAction() == action
+            ):
+                return widget
+        return None
 
     def addSeparator(self):
         action = QtGui.QAction(self)

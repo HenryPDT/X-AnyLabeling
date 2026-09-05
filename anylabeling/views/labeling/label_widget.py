@@ -1164,6 +1164,29 @@ class LabelingWidget(LabelDialog):
             checkable=True,
             enabled=False,
         )
+        toggle_contour_snap = action(
+            self.tr("Contour Snapping"),
+            self.toggle_contour_snap,
+            shortcuts.get("toggle_contour_snap", "Alt+C"),
+            icon="polygon",
+            tip=self.tr(
+                "Automatically snap drawn rectangles and rotations to object edges "
+                "(hold Shift while drawing to invert snapping)"
+            ),
+            checkable=True,
+            checked=False,
+            enabled=True,
+        )
+        snap_selected_to_contour = action(
+            self.tr("Snap Selected to Contours"),
+            self.snap_selected_shapes_to_contour,
+            shortcuts.get("snap_selected_to_contour", "Ctrl+Alt+S"),
+            icon="polygon",
+            tip=self.tr(
+                "Snap selected rectangle and rotation shapes to prominent image contours"
+            ),
+            enabled=False,
+        )
         shape_converter = action(
             self.tr("Shape Converter"),
             lambda: utils.open_shape_converter(self),
@@ -1877,6 +1900,8 @@ class LabelingWidget(LabelDialog):
             copy_coordinates=copy_coordinates,
             paste=paste,
             toggle_shape_lock=toggle_shape_lock,
+            toggle_contour_snap=toggle_contour_snap,
+            snap_selected_to_contour=snap_selected_to_contour,
             overview=overview,
             dataset_diagnostics=dataset_diagnostics,
             annotation_review_gallery=annotation_review_gallery,
@@ -2008,6 +2033,9 @@ class LabelingWidget(LabelDialog):
                 remove_point,
                 union_selection,
                 None,
+                snap_selected_to_contour,
+                toggle_contour_snap,
+                None,
                 keep_prev_mode,
                 auto_use_last_label_mode,
                 auto_use_last_gid_mode,
@@ -2035,6 +2063,8 @@ class LabelingWidget(LabelDialog):
                 None,
                 copy_coordinates,
                 union_selection,
+                snap_selected_to_contour,
+                toggle_contour_snap,
                 duplicate,
                 copy,
                 paste,
@@ -2057,6 +2087,7 @@ class LabelingWidget(LabelDialog):
                 create_line_mode,
                 create_point_mode,
                 create_line_strip_mode,
+                toggle_contour_snap,
                 digit_shortcut_0,
                 digit_shortcut_1,
                 digit_shortcut_2,
@@ -3398,6 +3429,40 @@ class LabelingWidget(LabelDialog):
             for action in self.actions.on_shapes_present:
                 action.setEnabled(False)
 
+    def toggle_contour_snap(self, value=None):
+        """Toggle automatic contour snapping when drawing shapes."""
+        if value is None:
+            value = not self.canvas.contour_snap_enabled
+        self.canvas.contour_snap_enabled = bool(value)
+        if hasattr(self.actions, "toggle_contour_snap"):
+            self.actions.toggle_contour_snap.setChecked(bool(value))
+        status = self.tr("enabled") if value else self.tr("disabled")
+        self.statusBar().showMessage(
+            self.tr("Contour Snapping: %s") % status, 3000
+        )
+
+    def snap_selected_shapes_to_contour(self):
+        """Snap currently selected rectangle or rotation shapes to contours."""
+        if not self.canvas.selected_shapes:
+            self.statusBar().showMessage(
+                self.tr("No shapes selected to snap"), 3000
+            )
+            return
+        modified = self.canvas.snap_selected_shapes()
+        if modified > 0:
+            self.set_dirty()
+            self.statusBar().showMessage(
+                self.tr("Snapped %d annotation(s) to contours") % modified,
+                3000,
+            )
+        else:
+            self.statusBar().showMessage(
+                self.tr(
+                    "Selected shape(s) already aligned or no contours detected"
+                ),
+                3000,
+            )
+
     # Trainer
     def start_training(self, mode):
         if mode != "ultralytics":
@@ -3427,6 +3492,14 @@ class LabelingWidget(LabelDialog):
 
     def dataset_diagnostics(self):
         if self.file_list_widget.count() > 0:
+            try:
+                if getattr(self, "diagnostics_dialog", None) is not None:
+                    try:
+                        self.diagnostics_dialog.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             self.diagnostics_dialog = AnnotationDiagnosticsDialog(parent=self)
             self.diagnostics_dialog.show()
             self.diagnostics_dialog.raise_()
@@ -3441,6 +3514,14 @@ class LabelingWidget(LabelDialog):
 
     def annotation_review_gallery(self):
         if self.file_list_widget.count() > 0:
+            try:
+                if getattr(self, "review_dialog", None) is not None:
+                    try:
+                        self.review_dialog.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             self.review_dialog = AnnotationReviewDialog(parent=self)
             self.review_dialog.show()
             self.review_dialog.raise_()
@@ -3900,9 +3981,8 @@ class LabelingWidget(LabelDialog):
                 item.setText(
                     _format_label_list_text(shape.label, shape.group_id)
                 )
-                if shape.group_id is None:
-                    color = shape.fill_color.getRgb()[:3]
-                    item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
+                color = shape.fill_color.getRgb()[:3]
+                item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
             changed = True
 
         if changed:
@@ -3930,6 +4010,12 @@ class LabelingWidget(LabelDialog):
 
     def handle_digit_shortcut(self, digit_num):
         """Handle numeric key (1-9, 0) shortcut press."""
+        # Do not hijack mid-draw polygon/line strokes
+        try:
+            if getattr(self.canvas, "drawing", lambda: False)():
+                return
+        except Exception:
+            pass
         quick_digit_labels = self._config.get("quick_digit_labels", True)
         if not quick_digit_labels:
             self.create_digit_mode(digit_num)
@@ -4000,7 +4086,9 @@ class LabelingWidget(LabelDialog):
         if self.drawing_digit_shortcuts is None:
             return
 
-        data = self.drawing_digit_shortcuts.get(digit_num, None)
+        data = self.drawing_digit_shortcuts.get(
+            digit_num, None
+        ) or self.drawing_digit_shortcuts.get(str(digit_num), None)
         if not data:
             return
 
@@ -4289,16 +4377,29 @@ class LabelingWidget(LabelDialog):
         if not QtCore.QFile.exists(label_file):
             return False
         try:
-            buffer = ""
+            # Fast path: verified_empty lives outside the huge imageData blob
+            # (template puts imageData mid-file, other_data appended after).
+            # Scan head+tail only to avoid reading multi-MB base64.
+            import os as _os
+
+            size = _os.path.getsize(label_file)
             with open(label_file, "r", encoding="utf-8") as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    buffer = buffer[-40:] + chunk
-                    match = VERIFIED_EMPTY_FIELD_PATTERN.search(buffer)
-                    if match:
-                        return match.group(1) == "true"
+                if size <= 256 * 1024:
+                    text = f.read()
+                    match = VERIFIED_EMPTY_FIELD_PATTERN.search(text)
+                    return bool(match) and match.group(1) == "true"
+                head = f.read(32768)
+                match = VERIFIED_EMPTY_FIELD_PATTERN.search(head)
+                if match:
+                    return match.group(1) == "true"
+                try:
+                    f.seek(max(0, size - 131072))
+                    tail = f.read()
+                except Exception:
+                    tail = ""
+                # Tail may start mid-token; prepend overlap
+                match = VERIFIED_EMPTY_FIELD_PATTERN.search(tail)
+                return bool(match) and match.group(1) == "true"
         except Exception:
             return False
         return False
@@ -4423,6 +4524,7 @@ class LabelingWidget(LabelDialog):
             )
             if ans != QtWidgets.QMessageBox.StandardButton.Yes:
                 return
+            self.canvas.store_shapes()
             self.canvas.load_shapes([])
             self.label_list.clear()
 
@@ -4432,8 +4534,11 @@ class LabelingWidget(LabelDialog):
         self.canvas.update()
 
         label_file = self.get_label_file()
-        if self.save_labels(label_file):
+        saved = self.save_labels(label_file)
+        if saved:
             self.set_clean()
+        else:
+            return
 
         self._sync_annotation_checked_state()
 
@@ -4825,7 +4930,7 @@ class LabelingWidget(LabelDialog):
                                 break
         return
 
-    def update_attributes(self, shape_index):
+    def update_attributes(self, shape_index):  # noqa: C901
         if shape_index >= len(self.canvas.shapes) or shape_index < 0:
             self.hide_attributes_panel()
             return
@@ -5298,6 +5403,16 @@ class LabelingWidget(LabelDialog):
             and not selected_shapes[0].locked
         )
         self.actions.edit_brush_mode.setEnabled(can_brush_edit)
+        can_snap = (
+            n_selected >= 1
+            and any(
+                s.shape_type in ["rectangle", "rotation"]
+                for s in selected_shapes
+            )
+            and not has_locked
+        )
+        if hasattr(self.actions, "snap_selected_to_contour"):
+            self.actions.snap_selected_to_contour.setEnabled(bool(can_snap))
         self.actions.union_selection.setEnabled(
             not has_locked
             and not all(value > 0 for value in allow_merge_shape_type.values())
@@ -5773,7 +5888,7 @@ class LabelingWidget(LabelDialog):
         self.canvas.load_shapes([item.shape() for item in self.label_list])
 
     # Callback functions:
-    def new_shape(self):
+    def new_shape(self):  # noqa: C901
         """Pop-up and give focus to the label editor.
 
         position MUST be in global coordinates.
@@ -7383,16 +7498,30 @@ class LabelingWidget(LabelDialog):
                 min_size_px=min_size_px,
                 max_percent=max_percent,
             )
-            if not auto_labeling_result.replace and self._config.get(
-                "auto_labeling_suppress_duplicates", True
-            ):
-                shapes_to_load = filter_duplicate_shapes(
-                    shapes_to_load,
-                    self.canvas.shapes,
-                    iou_threshold=self._config.get(
-                        "auto_labeling_duplicate_iou", 0.85
-                    ),
-                )
+            if self._config.get("auto_labeling_suppress_duplicates", True):
+                if not auto_labeling_result.replace:
+                    shapes_to_load = filter_duplicate_shapes(
+                        shapes_to_load,
+                        self.canvas.shapes,
+                        iou_threshold=self._config.get(
+                            "auto_labeling_duplicate_iou", 0.85
+                        ),
+                    )
+                else:
+                    # Replace mode: still dedupe against locked shapes we keep
+                    locked_existing = [
+                        s
+                        for s in self.canvas.shapes
+                        if getattr(s, "locked", False)
+                    ]
+                    if locked_existing:
+                        shapes_to_load = filter_duplicate_shapes(
+                            shapes_to_load,
+                            locked_existing,
+                            iou_threshold=self._config.get(
+                                "auto_labeling_duplicate_iou", 0.85
+                            ),
+                        )
 
         # Clear existing shapes
         if auto_labeling_result.replace:
