@@ -17,6 +17,7 @@ from .model import Model
 from .types import AutoLabelingResult
 from anylabeling.views.labeling.utils.shape_geometry import (
     apply_class_agnostic_shape_nms,
+    clamp_shapes_to_image_bounds,
 )
 
 # Client-side cleanup defaults for remote SAM3 image models.
@@ -207,6 +208,26 @@ class RemoteServer(Model):
         """Reset tracker state for tracking models."""
         self.reset_tracker_flag = True
 
+    def _build_predict_params(self, text_prompt=None):
+        params = {
+            "conf_threshold": self.conf_threshold,
+            "epsilon_factor": self.epsilon_factor,
+        }
+        if not self.uses_client_side_iou_nms():
+            params["iou_threshold"] = self.iou_threshold
+        if text_prompt:
+            params["text_prompt"] = text_prompt.rstrip(".")
+        if self.marks:
+            params["marks"] = self.marks
+        if self.reset_tracker_flag:
+            params["reset_tracker"] = True
+            self.reset_tracker_flag = False
+        if self.current_task:
+            params["current_task"] = self.current_task
+        if self.filter_classes is not None:
+            params["filter_classes"] = self.filter_classes
+        return params
+
     def predict_shapes(
         self, image, image_path=None, text_prompt=None, run_tracker=False
     ):
@@ -236,24 +257,7 @@ class RemoteServer(Model):
             logger.warning(f"Could not process image: {e}")
             return AutoLabelingResult([], replace=self.replace)
 
-        params = {}
-        params["conf_threshold"] = self.conf_threshold
-        # SAM3 multi-prompt IoU NMS is applied client-side only.
-        if not self.uses_client_side_iou_nms():
-            params["iou_threshold"] = self.iou_threshold
-        params["epsilon_factor"] = self.epsilon_factor
-
-        if text_prompt:
-            params["text_prompt"] = text_prompt.rstrip(".")
-        if self.marks:
-            params["marks"] = self.marks
-        if self.reset_tracker_flag:
-            params["reset_tracker"] = True
-            self.reset_tracker_flag = False
-        if self.current_task:
-            params["current_task"] = self.current_task
-        if self.filter_classes is not None:
-            params["filter_classes"] = self.filter_classes
+        params = self._build_predict_params(text_prompt)
 
         payload = {
             "model": self.current_model_id,
@@ -298,6 +302,10 @@ class RemoteServer(Model):
 
                 shapes.append(shape)
 
+            img_w, img_h = self._get_image_dimensions(image, image_path)
+            if img_w and img_h and img_w > 0 and img_h > 0:
+                shapes = clamp_shapes_to_image_bounds(shapes, img_w, img_h)
+
             shapes = self._apply_client_side_cleanup(shapes)
 
             description = data.get("description", "")
@@ -334,6 +342,29 @@ class RemoteServer(Model):
             f"shapes={shapes_before_nms}->{len(shapes)}"
         )
         return shapes
+
+    @staticmethod
+    def _get_image_dimensions(image, image_path):
+        """Resolve image size for post-response clamping.
+
+        Prefer ``image_path`` when available. Batch Auto Run reuses the UI
+        ``QImage`` across files, so trusting that object can clamp boxes to a
+        previous (often smaller) resolution and cut off detections.
+        """
+        if image_path and os.path.exists(image_path):
+            try:
+                from PIL import Image as PILImage
+
+                with PILImage.open(image_path) as _im:
+                    return float(_im.size[0]), float(_im.size[1])
+            except Exception:
+                pass
+        if hasattr(image, "width") and hasattr(image, "height"):
+            try:
+                return float(image.width()), float(image.height())
+            except Exception:
+                pass
+        return None, None
 
     def _image_to_data_uri(self, image, image_path):
         """Encode QImage or disk image file to base64 data URI."""
@@ -510,6 +541,10 @@ class RemoteServer(Model):
                 for point in shape_data.get("points", []):
                     shape.add_point(QtCore.QPointF(point[0], point[1]))
                 shapes.append(shape)
+
+            img_w, img_h = self._get_image_dimensions(None, image_path)
+            if img_w and img_h and img_w > 0 and img_h > 0:
+                shapes = clamp_shapes_to_image_bounds(shapes, img_w, img_h)
 
             return AutoLabelingResult(
                 shapes, replace=self.replace, description=""
@@ -704,6 +739,10 @@ class RemoteServer(Model):
                 for point in shape_data.get("points", []):
                     shape.add_point(QtCore.QPointF(point[0], point[1]))
                 shapes.append(shape)
+
+            img_w, img_h = self._get_image_dimensions(None, image_path)
+            if img_w and img_h and img_w > 0 and img_h > 0:
+                shapes = clamp_shapes_to_image_bounds(shapes, img_w, img_h)
 
             return AutoLabelingResult(shapes, replace=False, description="")
 

@@ -34,6 +34,13 @@ from anylabeling.views.labeling.shape import Shape
 from anylabeling.views.labeling.utils._io import io_open
 from anylabeling.views.labeling.utils.image_tags import normalize_image_tags
 from anylabeling.views.labeling.utils.qt import new_icon_path
+from anylabeling.views.labeling.utils.shape_geometry import (
+    clamp_shapes_to_image_bounds,
+)
+from anylabeling.services.auto_labeling.prediction_filter import (
+    filter_duplicate_shapes,
+    filter_prediction_sizes,
+)
 from anylabeling.views.labeling.utils.style import get_dialog_style
 from anylabeling.views.labeling.widgets.popup import Popup
 
@@ -301,7 +308,12 @@ def finish_processing(self, progress_dialog):
 
     try:
         target_file = self.image_list[self.current_index]
-        self.import_image_folder(osp.dirname(target_file), load=False)
+        # Keep the originally opened dataset root (supports nested scene dirs).
+        # Using dirname(target_file) would shrink the file list to a single scene.
+        reload_dir = getattr(self, "last_open_dir", None) or osp.dirname(
+            target_file
+        )
+        self.import_image_folder(reload_dir, load=False)
         target_index = self.fn_to_index[str(target_file)]
         signals_blocked = self.file_list_widget.blockSignals(True)
         try:
@@ -364,9 +376,34 @@ def save_auto_labeling_result(self, image_file, auto_labeling_result):
             new_tags = None
             replace = True
         else:
-            new_shapes = [
-                shape.to_dict() for shape in auto_labeling_result.shapes
-            ]
+            raw_shapes = list(auto_labeling_result.shapes or [])
+            if raw_shapes and osp.exists(image_file):
+                try:
+                    img_w, img_h = get_image_size(image_file)
+                    raw_shapes = clamp_shapes_to_image_bounds(
+                        raw_shapes, img_width=img_w, img_height=img_h
+                    )
+                    # Parity with interactive path: size filter + dedupe
+                    try:
+                        cfg = getattr(self, "_config", {}) or {}
+                        raw_shapes = filter_prediction_sizes(
+                            raw_shapes,
+                            img_width=img_w,
+                            img_height=img_h,
+                            min_size_px=cfg.get(
+                                "auto_labeling_min_size_px", 5.0
+                            ),
+                            max_percent=cfg.get(
+                                "auto_labeling_max_percent", 0.98
+                            ),
+                        )
+                    except Exception as exc:
+                        logger.warning(f"Batch size filter failed: {exc}")
+                except Exception as exc:
+                    logger.warning(
+                        f"Failed to get image size for clamping {image_file}: {exc}"
+                    )
+            new_shapes = [shape.to_dict() for shape in raw_shapes]
             new_description = auto_labeling_result.description
             new_tags = getattr(auto_labeling_result, "tags", None)
             replace = auto_labeling_result.replace
@@ -384,6 +421,23 @@ def save_auto_labeling_result(self, image_file, auto_labeling_result):
                 data["shapes"] = new_shapes
                 data["description"] = new_description
             else:
+                # Dedupe new predictions against existing annotations
+                try:
+                    cfg = getattr(self, "_config", {}) or {}
+                    if cfg.get("auto_labeling_suppress_duplicates", True):
+                        # Convert existing dicts to shape-like for filter
+                        existing = data.get("shapes", [])
+                        # filter_duplicate_shapes works with dicts
+                        kept_raw = filter_duplicate_shapes(
+                            raw_shapes,
+                            existing,
+                            iou_threshold=cfg.get(
+                                "auto_labeling_duplicate_iou", 0.85
+                            ),
+                        )
+                        new_shapes = [s.to_dict() for s in kept_raw]
+                except Exception as exc:
+                    logger.warning(f"Batch dedupe failed: {exc}")
                 if new_shapes or new_description:
                     data["checked"] = False
                 data["shapes"].extend(new_shapes)
@@ -391,6 +445,9 @@ def save_auto_labeling_result(self, image_file, auto_labeling_result):
                     data["description"] += new_description
                 else:
                     data["description"] = new_description
+            # Adding shapes clears verified-background state
+            if data.get("shapes"):
+                data.pop("verified_empty", None)
             if new_tags is not None:
                 tags = normalize_image_tags(
                     new_tags, f"auto labeling result for {image_file}"

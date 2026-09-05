@@ -118,5 +118,46 @@ class TestBatchRange(unittest.TestCase):
                         )
 
 
+class TestFinishProcessingDirectory(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(
+            []
+        )
+
+    def test_finish_processing_reloads_original_open_dir(self):
+        """Nested datasets must not shrink to the starting image's scene dir."""
+        dataset_root = "/tmp/dataset"
+        scene1_image = f"{dataset_root}/scene1/img001.jpg"
+        image_list = [
+            scene1_image,
+            f"{dataset_root}/scene1/img002.jpg",
+            f"{dataset_root}/scene2/img001.jpg",
+        ]
+        file_list_widget = Mock()
+        file_list_widget.blockSignals.return_value = False
+        widget = SimpleNamespace(
+            _batch_processing_active=True,
+            image_list=image_list,
+            current_index=0,
+            last_open_dir=dataset_root,
+            fn_to_index={path: i for i, path in enumerate(image_list)},
+            file_list_widget=file_list_widget,
+            import_image_folder=Mock(),
+            load_file=Mock(),
+            tr=lambda text: text,
+        )
+        progress = Mock()
+
+        with patch.object(batch, "Popup"):
+            batch.finish_processing(widget, progress)
+
+        widget.import_image_folder.assert_called_once_with(
+            dataset_root, load=False
+        )
+        widget.load_file.assert_called_once_with(scene1_image)
+        self.assertFalse(widget._batch_processing_active)
+
+
 if __name__ == "__main__":
     unittest.main()

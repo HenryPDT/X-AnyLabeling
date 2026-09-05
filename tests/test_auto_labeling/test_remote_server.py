@@ -4,6 +4,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from PIL import Image as PILImage
+
 from anylabeling.services.auto_labeling.remote_server import RemoteServer
 
 
@@ -106,6 +108,80 @@ class TestRemoteServerClassFilter(unittest.TestCase):
             [call.args[1] for call in save.call_args_list],
             ["/tmp/1.png", "/tmp/2.png"],
         )
+
+
+class TestRemoteServerImageDimensions(unittest.TestCase):
+    def test_prefers_image_path_over_stale_qimage(self):
+        """Batch Auto Run passes a stale UI image; path size must win."""
+        stale_ui_image = SimpleNamespace(
+            width=lambda: 1920, height=lambda: 1080
+        )
+        with tempfile.NamedTemporaryFile(suffix=".png") as image_file:
+            PILImage.new("RGB", (2560, 1440), color=(0, 0, 0)).save(
+                image_file.name
+            )
+            width, height = RemoteServer._get_image_dimensions(
+                stale_ui_image, image_file.name
+            )
+
+        self.assertEqual((width, height), (2560.0, 1440.0))
+
+    def test_falls_back_to_qimage_without_path(self):
+        image = SimpleNamespace(width=lambda: 1280, height=lambda: 720)
+        width, height = RemoteServer._get_image_dimensions(image, None)
+        self.assertEqual((width, height), (1280.0, 720.0))
+
+    def test_predict_shapes_does_not_clamp_to_stale_ui_height(self):
+        with patch(
+            "anylabeling.services.auto_labeling.model.get_config",
+            return_value={"remote_server_settings": {}},
+        ):
+            model = RemoteServer(
+                {
+                    "type": "remote_server",
+                    "display_name": "Remote Server",
+                    "timeout": 30,
+                },
+                Mock(),
+            )
+        model.current_model_id = "sam3"
+        model._apply_client_side_cleanup = lambda shapes: shapes
+
+        response = Mock()
+        response.json.return_value = {
+            "data": {
+                "shapes": [
+                    {
+                        "label": "object",
+                        "shape_type": "rectangle",
+                        "points": [
+                            [100, 1200],
+                            [200, 1200],
+                            [200, 1350],
+                            [100, 1350],
+                        ],
+                    }
+                ]
+            }
+        }
+        stale_ui_image = SimpleNamespace(
+            width=lambda: 1920, height=lambda: 1080
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".png") as image_file:
+            PILImage.new("RGB", (2560, 1440), color=(0, 0, 0)).save(
+                image_file.name
+            )
+            with patch(
+                "anylabeling.services.auto_labeling.remote_server.requests.post",
+                return_value=response,
+            ):
+                result = model.predict_shapes(stale_ui_image, image_file.name)
+
+        self.assertEqual(len(result.shapes), 1)
+        ys = [p.y() for p in result.shapes[0].points]
+        self.assertGreater(max(ys), 1080.0)
+        self.assertEqual(max(ys), 1350.0)
 
 
 if __name__ == "__main__":

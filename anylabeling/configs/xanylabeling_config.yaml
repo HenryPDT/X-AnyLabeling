@@ -228,6 +228,12 @@ remote_server_settings:
   api_key: null
   timeout: 180
 
+# Auto labeling filters
+auto_labeling_min_size_px: 5
+auto_labeling_max_percent: 0.98
+auto_labeling_suppress_duplicates: true
+auto_labeling_duplicate_iou: 0.85
+
 # Digit shortcuts
 digit_shortcuts: null
 quick_digit_labels: true

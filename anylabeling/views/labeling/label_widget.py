@@ -35,6 +35,13 @@ from PyQt6.QtWidgets import (
 
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
+from anylabeling.services.auto_labeling.prediction_filter import (
+    filter_duplicate_shapes,
+    filter_prediction_sizes,
+)
+from anylabeling.views.labeling.utils.shape_geometry import (
+    clamp_shapes_to_image_bounds,
+)
 from anylabeling.views.training import UltralyticsDialog
 
 from ...app_info import (
@@ -7193,6 +7200,39 @@ class LabelingWidget(LabelDialog):
         )
         annotations_changed = bool(auto_labeling_result.shapes)
 
+        # Filter predictions by size and duplicates against existing annotations
+        shapes_to_load = list(auto_labeling_result.shapes or [])
+        if (
+            shapes_to_load
+            and hasattr(self, "image")
+            and hasattr(self.image, "isNull")
+            and not self.image.isNull()
+        ):
+            img_w = self.image.width()
+            img_h = self.image.height()
+            shapes_to_load = clamp_shapes_to_image_bounds(
+                shapes_to_load, img_width=img_w, img_height=img_h
+            )
+            min_size_px = self._config.get("auto_labeling_min_size_px", 5.0)
+            max_percent = self._config.get("auto_labeling_max_percent", 0.98)
+            shapes_to_load = filter_prediction_sizes(
+                shapes_to_load,
+                img_width=img_w,
+                img_height=img_h,
+                min_size_px=min_size_px,
+                max_percent=max_percent,
+            )
+            if not auto_labeling_result.replace and self._config.get(
+                "auto_labeling_suppress_duplicates", True
+            ):
+                shapes_to_load = filter_duplicate_shapes(
+                    shapes_to_load,
+                    self.canvas.shapes,
+                    iou_threshold=self._config.get(
+                        "auto_labeling_duplicate_iou", 0.85
+                    ),
+                )
+
         # Clear existing shapes
         if auto_labeling_result.replace:
             locked_shapes = [
@@ -7202,16 +7242,14 @@ class LabelingWidget(LabelDialog):
                 self.canvas.shapes
             )
             self.label_list.clear()
-            self.load_shapes(
-                locked_shapes + auto_labeling_result.shapes, replace=True
-            )
+            self.load_shapes(locked_shapes + shapes_to_load, replace=True)
         else:  # Just update existing shapes
             # Remove shapes with label AutoLabelingMode.OBJECT
             for shape in self.canvas.shapes:
                 if shape.label == AutoLabelingMode.OBJECT:
                     item = self.label_list.find_item_by_shape(shape)
                     self.label_list.remove_item(item)
-            self.load_shapes(auto_labeling_result.shapes, replace=False)
+            self.load_shapes(shapes_to_load, replace=False)
 
         # Set image description
         if auto_labeling_result.description:
