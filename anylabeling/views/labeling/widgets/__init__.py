@@ -2,6 +2,7 @@
 
 from .about_dialog import AboutDialog
 from .annotation_diagnostics_dialog import AnnotationDiagnosticsDialog
+from .annotation_review_dialog import AnnotationReviewDialog
 from .auto_labeling import AutoLabelingWidget
 from .canvas import Canvas
 from .canvas_adjustment import (

@@ -100,6 +100,7 @@ from .widgets import (
     GroupIDModifyDialog,
     OverviewDialog,
     AnnotationDiagnosticsDialog,
+    AnnotationReviewDialog,
     Popup,
     SearchBar,
     ToolBar,
@@ -1047,6 +1048,14 @@ class LabelingWidget(LabelDialog):
                 "Scan dataset for duplicates, micro-noise, corrupt shapes, and duplicate images"
             ),
         )
+        annotation_review_gallery = action(
+            self.tr("Annotation Review Gallery..."),
+            self.annotation_review_gallery,
+            icon="crop",
+            tip=self.tr(
+                "Visually review object annotations with crop thumbnails and outlier sorting"
+            ),
+        )
         save_crop = action(
             self.tr("Save Cropped Image"),
             lambda: utils.save_crop(self),
@@ -1836,6 +1845,7 @@ class LabelingWidget(LabelDialog):
             toggle_shape_lock=toggle_shape_lock,
             overview=overview,
             dataset_diagnostics=dataset_diagnostics,
+            annotation_review_gallery=annotation_review_gallery,
             save_visualization_image=save_visualization_image,
             save_visualization_video=save_visualization_video,
             undo_last_point=undo_last_point,
@@ -2105,6 +2115,7 @@ class LabelingWidget(LabelDialog):
             (
                 overview,
                 dataset_diagnostics,
+                annotation_review_gallery,
                 None,
                 save_crop,
                 save_visualization_image,
@@ -3389,6 +3400,20 @@ class LabelingWidget(LabelDialog):
                 self.tr("No Images"),
                 self.tr(
                     "Please open an image folder first to run dataset diagnostics."
+                ),
+            )
+
+    def annotation_review_gallery(self):
+        if self.file_list_widget.count() > 0:
+            self.review_dialog = AnnotationReviewDialog(parent=self)
+            self.review_dialog.show()
+            self.review_dialog.raise_()
+            self.review_dialog.activateWindow()
+        else:
+            self.warning_message(
+                self.tr("No Images"),
+                self.tr(
+                    "Please open an image folder first to open the review gallery."
                 ),
             )
 
