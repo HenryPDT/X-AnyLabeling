@@ -37,6 +37,7 @@ from .image import (
 )
 from .image_tags import normalize_image_tag, normalize_image_tags
 from ._io import io_open
+from .file_sort import FileSortMode, sort_file_entries
 from .qt import (
     Struct,
     StayOpenMenuFilter,

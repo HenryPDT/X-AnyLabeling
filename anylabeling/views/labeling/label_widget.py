@@ -73,6 +73,7 @@ from .utils.file_search import (
     matches_filename,
     matches_label_attribute,
 )
+from .utils.file_sort import FileSortMode, sort_file_entries
 from .utils.qt import new_icon_path
 from .widgets import (
     AboutDialog,
@@ -114,11 +115,7 @@ LABEL_OPACITY = 128
 CHECKED_FIELD = "checked"
 FILE_CHECKED_COLOR = "#22A06B"
 FILE_UNCHECKED_COLOR = "#8C98A4"
-CHECKED_FIELD_PATTERN = re.compile(r'"checked"\s*:\s*(true|false)')
 VERIFIED_EMPTY_FIELD = "verified_empty"
-VERIFIED_EMPTY_FIELD_PATTERN = re.compile(
-    r'"verified_empty"\s*:\s*(true|false)'
-)
 
 
 def _measure_text_width(font_metrics, text):
@@ -4341,11 +4338,21 @@ class LabelingWidget(LabelDialog):
         copy_path_action = menu.addAction(
             utils.new_icon("copy", "svg"), self.tr("Copy File Path")
         )
+        sort_menu = menu.addMenu(self.tr("Sort File List"))
+        sort_actions = {}
+        for mode_value in FileSortMode.values():
+            act = sort_menu.addAction(mode_value.replace("_", " ").title())
+            act.setCheckable(True)
+            current = str(self._config.get("file_sort_mode", "default"))
+            act.setChecked(current == mode_value)
+            sort_actions[act] = mode_value
         action = menu.exec(self.file_list_widget.mapToGlobal(point))
         if action == copy_name_action:
             self.copy_file_path(osp.basename(item.text()))
         elif action == copy_path_action:
             self.copy_file_path(item.text())
+        elif action in sort_actions:
+            self.apply_file_sort_mode(sort_actions[action])
 
     def copy_file_path(self, file_path):
         popup = Popup(
@@ -4355,54 +4362,79 @@ class LabelingWidget(LabelDialog):
         )
         popup.show_popup(self, copy_msg=file_path, position="default")
 
-    def _label_file_checked(self, label_file):
-        if not QtCore.QFile.exists(label_file):
-            return False
+    def apply_file_sort_mode(self, mode=None):
+        """Reorder file list using DatasetMeta (opt-in, default preserves order)."""
+        from anylabeling.services.dataset_meta import get_dataset_meta_list
+
+        if mode is None:
+            mode = self._config.get("file_sort_mode", "default")
+        mode = FileSortMode.coerce(mode).value
+        self._config["file_sort_mode"] = mode
+        if self.file_list_widget.count() == 0:
+            return
+        current_file = str(self.filename) if self.filename else None
+        img_paths = []
+        for idx in range(self.file_list_widget.count()):
+            list_item = self.file_list_widget.item(idx)
+            if list_item is None:
+                continue
+            img_paths.append(list_item.text())
         try:
-            buffer = ""
-            with open(label_file, "r", encoding="utf-8") as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    buffer = buffer[-32:] + chunk
-                    match = CHECKED_FIELD_PATTERN.search(buffer)
-                    if match:
-                        return match.group(1) == "true"
+            metas = get_dataset_meta_list(
+                img_paths, output_dir=self.output_dir
+            )
         except Exception:
-            return False
-        return False
+            metas = [None] * len(img_paths)
+        entries = list(zip(img_paths, metas))
+        ordered = sort_file_entries(entries, mode=mode)
+        meta_by_path = dict(entries)
+        scroll = self.file_list_widget.verticalScrollBar()
+        scroll_pos = scroll.value() if scroll is not None else 0
+        selected = set()
+        try:
+            for item in self.file_list_widget.selectedItems():
+                selected.add(item.text())
+        except Exception:
+            selected = set()
+        self.file_list_widget.blockSignals(True)
+        try:
+            self.file_list_widget.clear()
+            self.fn_to_index = {}
+            for img_path, _ in ordered:
+                label_file = osp.splitext(img_path)[0] + ".json"
+                if self.output_dir:
+                    label_file = osp.join(
+                        self.output_dir, osp.basename(label_file)
+                    )
+                new_item = self._create_file_list_item(
+                    img_path, label_file, meta=meta_by_path.get(img_path)
+                )
+                if img_path in selected:
+                    new_item.setSelected(True)
+                self.file_list_widget.addItem(new_item)
+                self.fn_to_index[img_path] = self.file_list_widget.count() - 1
+            if current_file and current_file in self.fn_to_index:
+                self.file_list_widget.setCurrentRow(
+                    self.fn_to_index[current_file]
+                )
+            if scroll is not None:
+                scroll.setValue(scroll_pos)
+        finally:
+            self.file_list_widget.blockSignals(False)
+
+    def _label_file_checked(self, label_file):
+        from anylabeling.services.dataset_meta import (
+            is_label_file_checked_fast,
+        )
+
+        return bool(is_label_file_checked_fast(label_file))
 
     def _label_file_verified_empty(self, label_file):
-        if not QtCore.QFile.exists(label_file):
-            return False
-        try:
-            # Fast path: verified_empty lives outside the huge imageData blob
-            # (template puts imageData mid-file, other_data appended after).
-            # Scan head+tail only to avoid reading multi-MB base64.
-            import os as _os
+        from anylabeling.services.dataset_meta import (
+            is_label_file_verified_empty_fast,
+        )
 
-            size = _os.path.getsize(label_file)
-            with open(label_file, "r", encoding="utf-8") as f:
-                if size <= 256 * 1024:
-                    text = f.read()
-                    match = VERIFIED_EMPTY_FIELD_PATTERN.search(text)
-                    return bool(match) and match.group(1) == "true"
-                head = f.read(32768)
-                match = VERIFIED_EMPTY_FIELD_PATTERN.search(head)
-                if match:
-                    return match.group(1) == "true"
-                try:
-                    f.seek(max(0, size - 131072))
-                    tail = f.read()
-                except Exception:
-                    tail = ""
-                # Tail may start mid-token; prepend overlap
-                match = VERIFIED_EMPTY_FIELD_PATTERN.search(tail)
-                return bool(match) and match.group(1) == "true"
-        except Exception:
-            return False
-        return False
+        return bool(is_label_file_verified_empty_fast(label_file))
 
     def _set_file_item_checked(self, item, checked, verified_empty=False):
         if (
@@ -4424,7 +4456,7 @@ class LabelingWidget(LabelDialog):
     def _file_item_annotation_checked(self, item):
         return item.data(Qt.ItemDataRole.UserRole) is True
 
-    def _create_file_list_item(self, file, label_file):
+    def _create_file_list_item(self, file, label_file, meta=None):
         item = QtWidgets.QListWidgetItem(file)
         flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         if self._config.get("file_list_checkbox_editable", False):
@@ -4436,10 +4468,15 @@ class LabelingWidget(LabelDialog):
             item.setCheckState(Qt.CheckState.Checked)
         else:
             item.setCheckState(Qt.CheckState.Unchecked)
-        verified_bg = self._label_file_verified_empty(label_file)
+        if meta is not None:
+            verified_bg = bool(getattr(meta, "verified_empty", False))
+            checked = bool(getattr(meta, "checked", False))
+        else:
+            verified_bg = self._label_file_verified_empty(label_file)
+            checked = self._label_file_checked(label_file)
         self._set_file_item_checked(
             item,
-            self._label_file_checked(label_file),
+            checked,
             verified_empty=verified_bg,
         )
         return item

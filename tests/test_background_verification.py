@@ -4,12 +4,12 @@ import tempfile
 from PIL import Image
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QImage, QPainter, QPixmap
+from PyQt6.QtGui import QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication
 
+from anylabeling.services.dataset_meta import VERIFIED_EMPTY_FIELD_PATTERN
 from anylabeling.views.labeling.label_file import LabelFile
 from anylabeling.views.labeling.label_widget import (
-    VERIFIED_EMPTY_FIELD_PATTERN,
     _create_verified_background_icon,
 )
 from anylabeling.views.labeling.schema import (

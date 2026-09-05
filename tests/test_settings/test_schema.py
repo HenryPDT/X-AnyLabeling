@@ -23,14 +23,14 @@ except Exception:
 )
 class TestSettingsSchema(unittest.TestCase):
     def test_field_count(self):
-        self.assertEqual(len(SETTING_FIELDS), 139)
+        self.assertEqual(len(SETTING_FIELDS), 140)
 
     def test_shortcut_and_non_shortcut_count(self):
         shortcut_fields = [
             field for field in SETTING_FIELDS if field.primary == "Shortcuts"
         ]
         self.assertEqual(len(shortcut_fields), 82)
-        self.assertEqual(len(SETTING_FIELDS) - len(shortcut_fields), 57)
+        self.assertEqual(len(SETTING_FIELDS) - len(shortcut_fields), 58)
 
     def test_defaults_cover_all_keys(self):
         defaults = defaults_map()

@@ -29,6 +29,7 @@ qt_image_allocation_limit: null  # null keeps Qt default (256 MB); 0 disables th
 system_clipboard: false
 switch_to_checked: false
 file_list_checkbox_editable: false
+file_sort_mode: default # default, unannotated_first, unchecked_first, most_marks_first, fewest_marks_first, verified_empty_last
 
 flags: null
 label_flags: null

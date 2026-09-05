@@ -563,6 +563,26 @@ def _non_shortcut_fields() -> list[SettingField]:
             ),
         ),
         SettingField(
+            "file_sort_mode",
+            QT_TRANSLATE_NOOP(SETTINGS_TRANSLATION_CONTEXT, "File Sort Mode"),
+            "enum",
+            "General",
+            "File List",
+            "Navigation",
+            options=(
+                "default",
+                "unannotated_first",
+                "unchecked_first",
+                "most_marks_first",
+                "fewest_marks_first",
+                "verified_empty_last",
+            ),
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "File list ordering. Default preserves folder order.",
+            ),
+        ),
+        SettingField(
             "system_clipboard",
             QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT, "Use System Clipboard"
