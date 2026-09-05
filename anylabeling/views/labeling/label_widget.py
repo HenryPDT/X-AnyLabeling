@@ -101,6 +101,7 @@ from .widgets import (
     GroupIDModifyDialog,
     OverviewDialog,
     DatasetStatsDialog,
+    DatasetSplitDialog,
     AnnotationDiagnosticsDialog,
     AnnotationReviewDialog,
     Popup,
@@ -1079,6 +1080,14 @@ class LabelingWidget(LabelDialog):
                 "Per-class size/count stats with mean/stddev and tiny-box warnings"
             ),
         )
+        dataset_split = action(
+            self.tr("Train/Val Split Builder..."),
+            self.dataset_split_builder,
+            icon="overview",
+            tip=self.tr(
+                "Deterministic seeded train/val split with dataset.yaml"
+            ),
+        )
         dataset_diagnostics = action(
             self.tr("Dataset Diagnostics..."),
             self.dataset_diagnostics,
@@ -1910,6 +1919,7 @@ class LabelingWidget(LabelDialog):
             snap_selected_to_contour=snap_selected_to_contour,
             overview=overview,
             dataset_stats=dataset_stats,
+            dataset_split=dataset_split,
             dataset_diagnostics=dataset_diagnostics,
             annotation_review_gallery=annotation_review_gallery,
             save_visualization_image=save_visualization_image,
@@ -2189,6 +2199,7 @@ class LabelingWidget(LabelDialog):
             (
                 overview,
                 dataset_stats,
+                dataset_split,
                 dataset_diagnostics,
                 annotation_review_gallery,
                 None,
@@ -3518,6 +3529,26 @@ class LabelingWidget(LabelDialog):
                 self.tr(
                     "Please open an image folder first to view statistics."
                 ),
+            )
+
+    def dataset_split_builder(self):
+        if self.file_list_widget.count() > 0:
+            try:
+                if getattr(self, "split_dialog", None) is not None:
+                    try:
+                        self.split_dialog.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            self.split_dialog = DatasetSplitDialog(parent=self)
+            self.split_dialog.show()
+            self.split_dialog.raise_()
+            self.split_dialog.activateWindow()
+        else:
+            self.warning_message(
+                self.tr("No Images"),
+                self.tr("Please open an image folder first to build a split."),
             )
 
     def dataset_diagnostics(self):
