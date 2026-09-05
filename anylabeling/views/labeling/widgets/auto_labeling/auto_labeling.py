@@ -19,6 +19,13 @@ from PyQt6.QtWidgets import (
 
 from anylabeling.services.auto_labeling.model_manager import ModelManager
 from anylabeling.services.model_type import normalize_model_type
+from anylabeling.services.sahi_params import (
+    SAHI_DEFAULT_OVERLAP_RATIO,
+    SAHI_DEFAULT_SLICE_HEIGHT,
+    SAHI_DEFAULT_SLICE_WIDTH,
+    is_sahi_model_type,
+    resolve_sahi_params,
+)
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import (
     _AUTO_LABELING_IOU_MODELS,
@@ -46,6 +53,9 @@ from anylabeling.views.labeling.widgets.classes_filter_dialog import (
 from anylabeling.views.labeling.widgets.api_token_dialog import ApiTokenDialog
 from anylabeling.views.labeling.widgets.remote_server_dialog import (
     RemoteServerDialog,
+)
+from anylabeling.views.labeling.widgets.sahi_params_dialog import (
+    SahiParamsDialog,
 )
 from anylabeling.views.labeling.widgets.searchable_model_dropdown import (
     load_json,
@@ -200,6 +210,8 @@ class AutoLabelingWidget(QWidget):
             self.button_cropping.setEnabled(enable)
             self.button_segment_everything.setEnabled(enable)
             self.button_skip_detection.setEnabled(enable)
+            if hasattr(self, "button_sahi"):
+                self.button_sahi.setEnabled(enable)
             self.upn_select_combobox.setEnabled(enable)
             self.gd_select_combobox.setEnabled(enable)
             self.florence2_select_combobox.setEnabled(enable)
@@ -415,6 +427,24 @@ class AutoLabelingWidget(QWidget):
         self.button_skip_detection.clicked.connect(
             self.on_skip_detection_toggled
         )
+
+        # --- Configuration for: button_sahi (programmatic, no .ui change) ---
+        from PyQt6.QtWidgets import QPushButton
+
+        self.button_sahi = QPushButton(self.tr("SAHI"), self)
+        self.button_sahi.setStyleSheet(get_normal_button_style())
+        self.button_sahi.setToolTip(
+            self.tr("SAHI tiled inference settings (slice/overlap)")
+        )
+        self.button_sahi.clicked.connect(self.on_sahi_params_clicked)
+        self.button_sahi.hide()
+        try:
+            toolbar_layout = self.model_selection
+            toolbar_layout.insertWidget(
+                toolbar_layout.count() - 1, self.button_sahi
+            )
+        except Exception:
+            pass
 
         # --- Configuration for: mask_fineness_slider ---
         self.mask_fineness_slider.setMinimumWidth(120)
@@ -1129,6 +1159,7 @@ class AutoLabelingWidget(QWidget):
         self.on_preserve_existing_annotations_state_changed(
             self.initial_preserve_annotations_state
         )
+        self.apply_sahi_config_to_model()
 
         # Update specific mode in UI if specific model is loaded
         # NOTE: use normalized comparison so "grounding_dino",
@@ -1271,6 +1302,12 @@ class AutoLabelingWidget(QWidget):
                 logger.warning(
                     f"Warning: Widget '{widget_name}' not found in AutoLabelingWidget."
                 )
+        # SAHI button is programmatic: show only for SAHI models.
+        if hasattr(self, "button_sahi"):
+            if is_sahi_model_type(model_config.get("type", "")):
+                self.button_sahi.show()
+            else:
+                self.button_sahi.hide()
         self._update_model_selection_scroll_area_height()
 
     def hide_labeling_widgets(self):
@@ -1300,6 +1337,7 @@ class AutoLabelingWidget(QWidget):
             "toggle_preserve_existing_annotations",
             "button_set_api_token",
             "button_classes_filter",
+            "button_sahi",
             "button_reset_tracker",
             "upn_select_combobox",
             "gd_select_combobox",
@@ -1441,6 +1479,99 @@ class AutoLabelingWidget(QWidget):
             self.model_manager.set_auto_labeling_filter_classes(
                 dialog.get_selected_classes()
             )
+
+    def on_sahi_params_clicked(self):
+        """Open SAHI params dialog and apply to loaded SAHI model."""
+        loaded = getattr(self.model_manager, "loaded_model_config", None)
+        if not loaded:
+            return
+        if not is_sahi_model_type(loaded.get("type", "")):
+            return
+        model = loaded.get("model")
+        current = {
+            "slice_height": getattr(
+                model, "slice_height", SAHI_DEFAULT_SLICE_HEIGHT
+            ),
+            "slice_width": getattr(
+                model, "slice_width", SAHI_DEFAULT_SLICE_WIDTH
+            ),
+            "overlap_ratio": getattr(
+                model, "overlap_height_ratio", SAHI_DEFAULT_OVERLAP_RATIO
+            ),
+        }
+        # Prefer app config defaults when model has never been tuned.
+        try:
+            parent_cfg = getattr(getattr(self, "parent", None), "_config", {})
+            if isinstance(parent_cfg, dict):
+                current = {
+                    "slice_height": parent_cfg.get(
+                        "sahi_slice_height", current["slice_height"]
+                    ),
+                    "slice_width": parent_cfg.get(
+                        "sahi_slice_width", current["slice_width"]
+                    ),
+                    "overlap_ratio": parent_cfg.get(
+                        "sahi_overlap_ratio", current["overlap_ratio"]
+                    ),
+                }
+        except Exception as exc:
+            logger.debug(f"on_sahi_params_clicked config read skipped: {exc}")
+        slice_h, slice_w, overlap = resolve_sahi_params(current)
+        dialog = SahiParamsDialog(
+            parent=self,
+            slice_height=slice_h,
+            slice_width=slice_w,
+            overlap_ratio=overlap,
+        )
+        params = dialog.get_params()
+        if params is None:
+            return
+        slice_h, slice_w, overlap = params
+        self.model_manager.set_auto_labeling_sahi_params(
+            slice_h, slice_w, overlap
+        )
+        try:
+            parent_cfg = getattr(getattr(self, "parent", None), "_config", {})
+            if isinstance(parent_cfg, dict):
+                parent_cfg["sahi_slice_height"] = slice_h
+                parent_cfg["sahi_slice_width"] = slice_w
+                parent_cfg["sahi_overlap_ratio"] = overlap
+        except Exception as exc:
+            logger.debug(f"on_sahi_params_clicked config save skipped: {exc}")
+
+    def apply_sahi_config_to_model(self):
+        """Apply saved SAHI config to freshly loaded SAHI model.
+
+        Called on every model load; disabled during batch prediction via
+        ``button_sahi.setEnabled`` so dialog tuning cannot race inference.
+        """
+        try:
+            loaded = getattr(self.model_manager, "loaded_model_config", None)
+            if not loaded or not is_sahi_model_type(loaded.get("type", "")):
+                return
+            parent_cfg = getattr(getattr(self, "parent", None), "_config", {})
+            if not isinstance(parent_cfg, dict):
+                return
+            if not any(
+                k in parent_cfg
+                for k in (
+                    "sahi_slice_height",
+                    "sahi_slice_width",
+                    "sahi_overlap_ratio",
+                )
+            ):
+                return
+            slice_h, slice_w, overlap = resolve_sahi_params(parent_cfg)
+            # Only override when config differs from model defaults.
+            model = loaded.get("model")
+            if model is None:
+                return
+            self.model_manager.set_auto_labeling_sahi_params(
+                slice_h, slice_w, overlap
+            )
+        except Exception as exc:
+            logger.debug(f"apply_sahi_config_to_model skipped: {exc}")
+            return
 
     def on_set_api_token(self):
         """Show a dialog to input the API token."""

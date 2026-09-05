@@ -4,6 +4,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QCoreApplication
 
 from anylabeling.app_info import __preferred_device__
+from anylabeling.services.sahi_params import apply_sahi_params_to
 from anylabeling.views.labeling.shape import Shape
 from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.utils.opencv import qt_img_to_rgb_cv_img
@@ -92,6 +93,12 @@ class YOLOv8_SAHI(Model):
     def set_auto_labeling_preserve_existing_annotations_state(self, state):
         """Toggle the preservation of existing annotations based on the checkbox state."""
         self.replace = not state
+
+    def set_auto_labeling_sahi_params(
+        self, slice_height, slice_width, overlap_ratio
+    ):
+        """Update SAHI slice/overlap at runtime (clamped)."""
+        apply_sahi_params_to(self, slice_height, slice_width, overlap_ratio)
 
     def set_auto_labeling_filter_classes(self, class_names):
         """Updates the active class filter from a list of class names."""

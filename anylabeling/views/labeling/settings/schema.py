@@ -600,6 +600,56 @@ def _non_shortcut_fields() -> list[SettingField]:
             ),
         ),
         SettingField(
+            "sahi_slice_height",
+            QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT, "SAHI Slice Height"
+            ),
+            "int",
+            "General",
+            "Auto Labeling",
+            "SAHI",
+            minimum=256,
+            maximum=2048,
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "SAHI tile height in pixels.",
+            ),
+        ),
+        SettingField(
+            "sahi_slice_width",
+            QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT, "SAHI Slice Width"
+            ),
+            "int",
+            "General",
+            "Auto Labeling",
+            "SAHI",
+            minimum=256,
+            maximum=2048,
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "SAHI tile width in pixels.",
+            ),
+        ),
+        SettingField(
+            "sahi_overlap_ratio",
+            QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT, "SAHI Overlap Ratio"
+            ),
+            "float",
+            "General",
+            "Auto Labeling",
+            "SAHI",
+            minimum=0.0,
+            maximum=0.5,
+            decimals=2,
+            single_step=0.05,
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "SAHI tile overlap ratio.",
+            ),
+        ),
+        SettingField(
             "system_clipboard",
             QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT, "Use System Clipboard"

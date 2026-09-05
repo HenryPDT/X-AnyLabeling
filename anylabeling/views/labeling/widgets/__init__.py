@@ -30,6 +30,15 @@ from .overview_dialog import OverviewDialog
 from .polygon_sides_dialog import PolygonSidesDialog
 from .ppocr_dialog import PPOCRDialog
 from .popup import Popup
+from .review_table_base import (
+    ReviewTableDialog,
+    ThumbnailCache,
+    export_rows_to_csv,
+    get_label_color,
+    get_review_dialog_style,
+    setup_review_table,
+)
+from .sahi_params_dialog import SahiParamsDialog
 from .toolbar import ToolBar
 from .unique_label_qlist_widget import UniqueLabelQListWidget
 

@@ -2449,6 +2449,18 @@ class ModelManager(QObject):
         if model and hasattr(model, "set_auto_labeling_containment_keep"):
             model.set_auto_labeling_containment_keep(mode)
 
+    def set_auto_labeling_sahi_params(
+        self, slice_height, slice_width, overlap_ratio
+    ):
+        """Update SAHI params on loaded SAHI model (no-op otherwise)."""
+        if self.loaded_model_config is None:
+            return
+        model = self.loaded_model_config.get("model")
+        if model and hasattr(model, "set_auto_labeling_sahi_params"):
+            model.set_auto_labeling_sahi_params(
+                slice_height, slice_width, overlap_ratio
+            )
+
     def set_auto_labeling_preserve_existing_annotations_state(self, state):
         if (
             self.loaded_model_config is not None
