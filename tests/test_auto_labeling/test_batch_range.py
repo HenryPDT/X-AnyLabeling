@@ -74,6 +74,9 @@ class TestBatchRange(unittest.TestCase):
                             batch, "BatchRangeDialog", return_value=dialog
                         ),
                         patch.object(
+                            batch, "_ask_batch_scope", return_value="all"
+                        ),
+                        patch.object(
                             batch,
                             "show_progress_dialog_and_process",
                             side_effect=lambda app: batch.process_next_image(

@@ -41,10 +41,24 @@ from anylabeling.services.auto_labeling.prediction_filter import (
     filter_duplicate_shapes,
     filter_prediction_sizes,
 )
+from anylabeling.services.batch_scope import should_process_image
+from anylabeling.services.dataset_meta import get_dataset_meta
 from anylabeling.views.labeling.utils.style import get_dialog_style
 from anylabeling.views.labeling.widgets.popup import Popup
 
 __all__ = ["run_all_images"]
+
+
+def _should_process_scope(image_file, scope, output_dir) -> bool:
+    """Shared scope filter for thread + loop paths (fail-open with log)."""
+    if scope == "all":
+        return True
+    try:
+        meta = get_dataset_meta(image_file, output_dir=output_dir)
+        return bool(should_process_image(meta, scope))
+    except Exception as exc:
+        logger.debug(f"batch scope check fail-open for {image_file}: {exc}")
+        return True
 
 
 class BatchRangeDialog(QDialog):
@@ -258,6 +272,56 @@ class TextInputDialog(QDialog):
         return ""
 
 
+class BatchScopeDialog(QDialog):
+    """Confirmation dialog with batch scope selector (additive)."""
+
+    def __init__(self, parent=None, default_scope="all"):
+        super().__init__(parent)
+        self._selected_scope = str(default_scope or "all")
+        self._combo = None
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle(self.tr("Batch Auto-Labeling"))
+        self.setMinimumWidth(380)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+        prompt = QLabel(self.tr("Do you want to process all images?"))
+        layout.addWidget(prompt)
+        scope_label = QLabel(self.tr("Scope:"))
+        layout.addWidget(scope_label)
+        from PyQt6.QtWidgets import QComboBox
+
+        self._combo = QComboBox(self)
+        self._combo.addItem(self.tr("All images"), userData="all")
+        self._combo.addItem(
+            self.tr("Unannotated only"), userData="unannotated_only"
+        )
+        self._combo.addItem(
+            self.tr("Unchecked only"), userData="unchecked_only"
+        )
+        idx = self._combo.findData(self._selected_scope)
+        if idx >= 0:
+            self._combo.setCurrentIndex(idx)
+        layout.addWidget(self._combo)
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+    def get_scope(self):
+        if self.exec() == QDialog.DialogCode.Accepted:
+            if self._combo is not None:
+                return str(self._combo.currentData() or "all")
+            return self._selected_scope
+        return None
+
+
 def get_image_size(image_path):
     with Image.open(image_path) as img:
         return img.size
@@ -352,6 +416,7 @@ def _reset_batch_processing_state(self):
         "current_index",
         "_batch_start_index",
         "_batch_end_index",
+        "batch_scope",
     ):
         if hasattr(self, attribute):
             delattr(self, attribute)
@@ -364,49 +429,53 @@ def _reset_auto_labeling_tracker(self):
     model_manager.set_auto_labeling_reset_tracker()
 
 
+def _prepare_batch_shapes(self, image_file, auto_labeling_result):
+    """Normalize batch result to (raw, shapes, description, tags, replace).
+
+    ``raw`` keeps clamped/filtered Shape objects for the dedupe path;
+    ``shapes`` holds their dict form for JSON writes.
+    """
+    if auto_labeling_result is None:
+        return [], [], "", None, True
+    raw_shapes = list(auto_labeling_result.shapes or [])
+    if raw_shapes and osp.exists(image_file):
+        try:
+            img_w, img_h = get_image_size(image_file)
+            raw_shapes = clamp_shapes_to_image_bounds(
+                raw_shapes, img_width=img_w, img_height=img_h
+            )
+            # Parity with interactive path: size filter + dedupe
+            try:
+                cfg = getattr(self, "_config", {}) or {}
+                raw_shapes = filter_prediction_sizes(
+                    raw_shapes,
+                    img_width=img_w,
+                    img_height=img_h,
+                    min_size_px=cfg.get("auto_labeling_min_size_px", 5.0),
+                    max_percent=cfg.get("auto_labeling_max_percent", 0.98),
+                )
+            except Exception as exc:
+                logger.warning(f"Batch size filter failed: {exc}")
+        except Exception as exc:
+            logger.warning(
+                f"Failed to get image size for clamping {image_file}: {exc}"
+            )
+    new_shapes = [shape.to_dict() for shape in raw_shapes]
+    new_description = auto_labeling_result.description
+    new_tags = getattr(auto_labeling_result, "tags", None)
+    replace = auto_labeling_result.replace
+    return raw_shapes, new_shapes, new_description, new_tags, replace
+
+
 def save_auto_labeling_result(self, image_file, auto_labeling_result):
     try:
         label_file = osp.splitext(image_file)[0] + ".json"
         if self.output_dir:
             label_file = osp.join(self.output_dir, osp.basename(label_file))
 
-        if auto_labeling_result is None:
-            new_shapes = []
-            new_description = ""
-            new_tags = None
-            replace = True
-        else:
-            raw_shapes = list(auto_labeling_result.shapes or [])
-            if raw_shapes and osp.exists(image_file):
-                try:
-                    img_w, img_h = get_image_size(image_file)
-                    raw_shapes = clamp_shapes_to_image_bounds(
-                        raw_shapes, img_width=img_w, img_height=img_h
-                    )
-                    # Parity with interactive path: size filter + dedupe
-                    try:
-                        cfg = getattr(self, "_config", {}) or {}
-                        raw_shapes = filter_prediction_sizes(
-                            raw_shapes,
-                            img_width=img_w,
-                            img_height=img_h,
-                            min_size_px=cfg.get(
-                                "auto_labeling_min_size_px", 5.0
-                            ),
-                            max_percent=cfg.get(
-                                "auto_labeling_max_percent", 0.98
-                            ),
-                        )
-                    except Exception as exc:
-                        logger.warning(f"Batch size filter failed: {exc}")
-                except Exception as exc:
-                    logger.warning(
-                        f"Failed to get image size for clamping {image_file}: {exc}"
-                    )
-            new_shapes = [shape.to_dict() for shape in raw_shapes]
-            new_description = auto_labeling_result.description
-            new_tags = getattr(auto_labeling_result, "tags", None)
-            replace = auto_labeling_result.replace
+        raw_shapes, new_shapes, new_description, new_tags, replace = (
+            _prepare_batch_shapes(self, image_file, auto_labeling_result)
+        )
 
         if osp.exists(label_file):
             with io_open(label_file, "r") as f:
@@ -505,6 +574,8 @@ class BatchProcessingThread(QThread):
         text_prompt,
         run_tracker,
         skip_detection,
+        batch_scope="all",
+        output_dir=None,
     ):
         super().__init__()
         self.app = app
@@ -514,6 +585,13 @@ class BatchProcessingThread(QThread):
         self.text_prompt = text_prompt
         self.run_tracker = run_tracker
         self.skip_detection = skip_detection
+        self.batch_scope = str(batch_scope or "all")
+        self.output_dir = output_dir
+
+    def _should_process(self, image_file) -> bool:
+        return _should_process_scope(
+            image_file, self.batch_scope, self.output_dir
+        )
 
     def run(self):
         total_images = len(self.image_list)
@@ -525,6 +603,15 @@ class BatchProcessingThread(QThread):
                 and not self.app.cancel_processing
             ):
                 image_file = self.image_list[self.image_index]
+
+                if not self._should_process(image_file):
+                    self.image_index += 1
+                    completed = self.image_index - start_index
+                    self.progress_updated.emit(
+                        completed,
+                        f"Skipped: {completed}/{image_count}",
+                    )
+                    continue
 
                 if self.text_prompt:
                     result = self.app.auto_labeling_widget.model_manager.predict_shapes(
@@ -609,6 +696,8 @@ def process_next_image(self, progress_dialog, batch=True):
             self.text_prompt,
             self.run_tracker,
             skip_detection,
+            batch_scope=getattr(self, "batch_scope", "all"),
+            output_dir=getattr(self, "output_dir", None),
         )
 
         def _on_progress(value, label):
@@ -639,6 +728,20 @@ def process_next_image(self, progress_dialog, batch=True):
             not self.cancel_processing
         ):
             image_file = self.image_list[self.image_index]
+
+            # Scope filter (video/loop path): skip without inference.
+            scope = getattr(self, "batch_scope", "all")
+            if not _should_process_scope(
+                image_file, scope, getattr(self, "output_dir", None)
+            ):
+                self.image_index += 1
+                completed = self.image_index - self._batch_start_index
+                progress_dialog.setValue(completed)
+                progress_dialog.setLabelText(
+                    f"Skipped: {completed}/{image_count}"
+                )
+                QApplication.processEvents()
+                continue
 
             batch_processing_mode = "default"
             if model_type == "remote_server":
@@ -821,34 +924,49 @@ def show_progress_dialog_and_process(self):
     QTimer.singleShot(200, lambda: process_next_image(self, progress_dialog))
 
 
-def run_all_images(self):
-    if getattr(self, "_batch_processing_active", False):
+def _is_batch_processing_ready(app) -> bool:
+    """Check prerequisites for batch processing without side effects."""
+    if getattr(app, "_batch_processing_active", False):
         logger.warning("Batch processing is already running.")
-        return
-
-    if len(self.image_list) < 1:
-        return
-
-    if self.auto_labeling_widget.model_manager.loaded_model_config is None:
-        self.auto_labeling_widget.model_manager.new_model_status.emit(
-            self.tr("Model is not loaded. Choose a mode to continue.")
+        return False
+    if len(getattr(app, "image_list", [])) < 1:
+        return False
+    loaded = app.auto_labeling_widget.model_manager.loaded_model_config
+    if loaded is None:
+        app.auto_labeling_widget.model_manager.new_model_status.emit(
+            app.tr("Model is not loaded. Choose a mode to continue.")
         )
-        return
-
-    if (
-        self.auto_labeling_widget.model_manager.loaded_model_config["type"]
-        in _BATCH_PROCESSING_INVALID_MODELS
-    ):
+        return False
+    if loaded["type"] in _BATCH_PROCESSING_INVALID_MODELS:
         logger.warning(
-            f"The model `{self.auto_labeling_widget.model_manager.loaded_model_config['type']}`"
-            f" is not supported for this action."
-            f" Please choose a valid model to execute."
+            f"The model `{loaded['type']}`"
+            " is not supported for this action."
+            " Please choose a valid model to execute."
         )
-        self.auto_labeling_widget.model_manager.new_model_status.emit(
-            self.tr(
+        app.auto_labeling_widget.model_manager.new_model_status.emit(
+            app.tr(
                 "Invalid model type, please choose a valid model_type to run."
             )
         )
+        return False
+    return True
+
+
+def _ask_batch_scope(app) -> str | None:
+    """Show scope picker; returns scope string or None if cancelled."""
+    default_scope = "all"
+    try:
+        default_scope = str(
+            getattr(app, "_config", {}).get("batch_scope", "all") or "all"
+        )
+    except Exception:
+        default_scope = "all"
+    dialog = BatchScopeDialog(parent=app, default_scope=default_scope)
+    return dialog.get_scope()
+
+
+def run_all_images(self):
+    if not _is_batch_processing_ready(self):
         return
 
     current_index = self.fn_to_index[str(self.filename)]
@@ -858,7 +976,11 @@ def run_all_images(self):
     if response.exec() != QDialog.DialogCode.Accepted:
         return
 
-    logger.info("Start running all images...")
+    selected_scope = _ask_batch_scope(self)
+    if selected_scope is None:
+        return
+
+    logger.info(f"Start running all images... (scope={selected_scope})")
 
     self.current_index = current_index
     self._batch_start_index = response.from_input.value() - 1
@@ -866,6 +988,12 @@ def run_all_images(self):
     self.image_index = self._batch_start_index
     self.text_prompt = ""
     self.run_tracker = False
+    self.batch_scope = selected_scope
+    try:
+        if hasattr(self, "_config") and isinstance(self._config, dict):
+            self._config["batch_scope"] = selected_scope
+    except Exception:
+        pass
 
     model_type = self.auto_labeling_widget.model_manager.loaded_model_config[
         "type"

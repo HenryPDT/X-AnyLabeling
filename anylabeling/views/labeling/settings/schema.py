@@ -583,6 +583,23 @@ def _non_shortcut_fields() -> list[SettingField]:
             ),
         ),
         SettingField(
+            "batch_scope",
+            QT_TRANSLATE_NOOP(SETTINGS_TRANSLATION_CONTEXT, "Batch Scope"),
+            "enum",
+            "General",
+            "File List",
+            "Navigation",
+            options=(
+                "all",
+                "unannotated_only",
+                "unchecked_only",
+            ),
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "Which images batch auto-labeling processes by default.",
+            ),
+        ),
+        SettingField(
             "system_clipboard",
             QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT, "Use System Clipboard"

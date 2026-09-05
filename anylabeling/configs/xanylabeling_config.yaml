@@ -30,6 +30,7 @@ system_clipboard: false
 switch_to_checked: false
 file_list_checkbox_editable: false
 file_sort_mode: default # default, unannotated_first, unchecked_first, most_marks_first, fewest_marks_first, verified_empty_last
+batch_scope: all # all, unannotated_only, unchecked_only
 
 flags: null
 label_flags: null
