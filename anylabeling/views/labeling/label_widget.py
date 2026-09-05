@@ -115,6 +115,10 @@ CHECKED_FIELD = "checked"
 FILE_CHECKED_COLOR = "#22A06B"
 FILE_UNCHECKED_COLOR = "#8C98A4"
 CHECKED_FIELD_PATTERN = re.compile(r'"checked"\s*:\s*(true|false)')
+VERIFIED_EMPTY_FIELD = "verified_empty"
+VERIFIED_EMPTY_FIELD_PATTERN = re.compile(
+    r'"verified_empty"\s*:\s*(true|false)'
+)
 
 
 def _measure_text_width(font_metrics, text):
@@ -155,6 +159,24 @@ def _create_file_status_icon(color, filled=True):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QtGui.QPen(QtGui.QColor(color), 1.5))
     painter.drawEllipse(2, 2, 8, 8)
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def _create_verified_background_icon():
+    pixmap = QtGui.QPixmap(16, 12)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QtGui.QColor("#30D158"))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRoundedRect(0, 0, 16, 12, 2.0, 2.0)
+    painter.setPen(QtGui.QColor("#FFFFFF"))
+    font = painter.font()
+    font.setPointSize(7)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "BG")
     painter.end()
     return QtGui.QIcon(pixmap)
 
@@ -373,6 +395,7 @@ class LabelingWidget(LabelDialog):
                 FILE_UNCHECKED_COLOR, filled=False
             ),
         }
+        self.verified_bg_icon = _create_verified_background_icon()
         self.file_list_widget.itemSelectionChanged.connect(
             self.file_selection_changed
         )
@@ -665,6 +688,16 @@ class LabelingWidget(LabelDialog):
             self.tr("Mark current annotation as checked"),
             checkable=True,
             enabled=False,
+        )
+        mark_as_verified_background = action(
+            self.tr("Mark as Verified Background"),
+            self.mark_as_verified_background,
+            shortcuts.get("mark_as_verified_background", "Ctrl+Shift+B"),
+            "verify",
+            self.tr(
+                "Mark current image as verified negative background (0 annotations) and advance"
+            ),
+            enabled=True,
         )
 
         toggle_compare_view = action(
@@ -1829,6 +1862,7 @@ class LabelingWidget(LabelDialog):
             delete_file=delete_file,
             delete_image_file=delete_image_file,
             toggle_annotation_checked=toggle_annotation_checked,
+            mark_as_verified_background=mark_as_verified_background,
             keep_prev_mode=keep_prev_mode,
             auto_use_last_label_mode=auto_use_last_label_mode,
             auto_use_last_gid_mode=auto_use_last_gid_mode,
@@ -2035,6 +2069,7 @@ class LabelingWidget(LabelDialog):
                 digit_shortcut_9,
                 edit_mode,
                 toggle_annotation_checked,
+                mark_as_verified_background,
                 shape_manager,
                 loop_thru_labels,
                 loop_select_labels,
@@ -2061,6 +2096,7 @@ class LabelingWidget(LabelDialog):
         ):
             self.addAction(digit_action)
         self.addAction(self.actions.toggle_annotation_checked)
+        self.addAction(self.actions.mark_as_verified_background)
 
         self.canvas.vertex_selected.connect(
             self.actions.remove_point.setEnabled
@@ -4249,11 +4285,40 @@ class LabelingWidget(LabelDialog):
             return False
         return False
 
-    def _set_file_item_checked(self, item, checked):
-        if item.data(Qt.ItemDataRole.UserRole) is checked:
+    def _label_file_verified_empty(self, label_file):
+        if not QtCore.QFile.exists(label_file):
+            return False
+        try:
+            buffer = ""
+            with open(label_file, "r", encoding="utf-8") as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    buffer = buffer[-40:] + chunk
+                    match = VERIFIED_EMPTY_FIELD_PATTERN.search(buffer)
+                    if match:
+                        return match.group(1) == "true"
+        except Exception:
+            return False
+        return False
+
+    def _set_file_item_checked(self, item, checked, verified_empty=False):
+        if (
+            item.data(Qt.ItemDataRole.UserRole) is checked
+            and item.data(Qt.ItemDataRole.UserRole + 1) is verified_empty
+        ):
             return
-        item.setIcon(self.file_status_icons[checked])
+        if verified_empty:
+            item.setIcon(self.verified_bg_icon)
+            item.setToolTip(
+                self.tr("Verified Background (0 Annotations) [BG]")
+            )
+        else:
+            item.setIcon(self.file_status_icons[checked])
+            item.setToolTip("")
         item.setData(Qt.ItemDataRole.UserRole, checked)
+        item.setData(Qt.ItemDataRole.UserRole + 1, verified_empty)
 
     def _file_item_annotation_checked(self, item):
         return item.data(Qt.ItemDataRole.UserRole) is True
@@ -4270,7 +4335,12 @@ class LabelingWidget(LabelDialog):
             item.setCheckState(Qt.CheckState.Checked)
         else:
             item.setCheckState(Qt.CheckState.Unchecked)
-        self._set_file_item_checked(item, self._label_file_checked(label_file))
+        verified_bg = self._label_file_verified_empty(label_file)
+        self._set_file_item_checked(
+            item,
+            self._label_file_checked(label_file),
+            verified_empty=verified_bg,
+        )
         return item
 
     def _current_file_item(self):
@@ -4300,7 +4370,21 @@ class LabelingWidget(LabelDialog):
     def _update_current_file_checked_item(self):
         item = self._current_file_item()
         if item is not None:
-            self._set_file_item_checked(item, self._annotation_checked())
+            verified_bg = (
+                self.other_data.get(VERIFIED_EMPTY_FIELD, False) is True
+                and len(self.canvas.shapes) == 0
+            )
+            self._set_file_item_checked(
+                item, self._annotation_checked(), verified_empty=verified_bg
+            )
+
+    def _clear_verified_empty(self):
+        """Clear verified background state when annotations are added."""
+        if self.other_data.get(VERIFIED_EMPTY_FIELD, False):
+            self.other_data[VERIFIED_EMPTY_FIELD] = False
+            self.canvas.verified_empty = False
+            self.canvas.update()
+            self._update_current_file_checked_item()
 
     def _sync_annotation_checked_state(self):
         self._update_annotation_checked_action()
@@ -4315,6 +4399,51 @@ class LabelingWidget(LabelDialog):
         label_file = self.get_label_file()
         if self.save_labels(label_file):
             self.set_clean()
+
+    def mark_as_verified_background(self):
+        """Mark current image as verified negative/background with 0 annotations and advance."""
+        if (
+            not self.filename
+            or not hasattr(self, "image")
+            or self.image.isNull()
+        ):
+            return
+        if self.canvas.shapes:
+            ans = QtWidgets.QMessageBox.question(
+                self,
+                self.tr("Mark as Verified Background"),
+                self.tr(
+                    "This image contains %d annotation(s).\n"
+                    "Marking it as verified background will clear all annotations.\n"
+                    "Do you want to continue?"
+                )
+                % len(self.canvas.shapes),
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if ans != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+            self.canvas.load_shapes([])
+            self.label_list.clear()
+
+        self.other_data[VERIFIED_EMPTY_FIELD] = True
+        self.other_data[CHECKED_FIELD] = True
+        self.canvas.verified_empty = True
+        self.canvas.update()
+
+        label_file = self.get_label_file()
+        if self.save_labels(label_file):
+            self.set_clean()
+
+        self._sync_annotation_checked_state()
+
+        popup = Popup(
+            self.tr("Marked as Verified Background"),
+            parent=self,
+            icon=new_icon_path("copy-green", "svg"),
+        )
+        popup.show_popup(self, position="center")
+        self.open_next_image()
 
     def _append_filter_submenus(
         self, parent_menu, prepend=False, after_filter_actions=None
@@ -5195,6 +5324,7 @@ class LabelingWidget(LabelDialog):
             self.update_crosshair_color()
 
     def add_label(self, shape, update_last_label=True, refresh_filters=True):
+        self._clear_verified_empty()
         if shape.group_id is None:
             text = shape.label
         else:
@@ -5353,6 +5483,8 @@ class LabelingWidget(LabelDialog):
             self.label_list.setUpdatesEnabled(True)
             self._no_selection_slot = False
         self.canvas.load_shapes(shapes, replace=replace)
+        if shapes:
+            self._clear_verified_empty()
         self._refresh_shape_filters()
 
     def load_flags(self, flags):
@@ -6436,6 +6568,10 @@ class LabelingWidget(LabelDialog):
         self.paint_canvas()
         self.add_recent_file(self.filename)
         self.toggle_actions(True)
+        self.canvas.verified_empty = (
+            self.other_data.get(VERIFIED_EMPTY_FIELD, False) is True
+            and len(self.canvas.shapes) == 0
+        )
         self.canvas.setFocus()
         self._sync_annotation_checked_state()
         self.update_thumbnail_display()

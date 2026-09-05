@@ -14,6 +14,7 @@ XLABEL_BASIC_FIELDS = [
 ]
 
 IMAGE_TAGS_FIELD = "tags"
+VERIFIED_EMPTY_FIELD = "verified_empty"
 
 
 def create_xlabel_template(

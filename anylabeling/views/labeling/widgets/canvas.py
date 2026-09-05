@@ -155,6 +155,7 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
         self.visible = {}
         self._hide_backround = False
         self.hide_backround = False
+        self.verified_empty = False
         self.h_shape = None
         self.prev_h_shape = None
         self.h_vertex = None
@@ -1474,6 +1475,45 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
         p.setPen(QtGui.QPen(outline, 2.0 / max(self.scale, 1e-6)))
         p.setBrush(color)
         p.drawPath(self._magic_wand_path)
+        p.restore()
+
+    def _paint_verified_background_badge(self, p: QtGui.QPainter) -> None:
+        """Paint [VERIFIED BACKGROUND] overlay badge in the upper right corner."""
+        p.save()
+        p.resetTransform()
+        badge_text = self.tr("VERIFIED BACKGROUND")
+        font = QtGui.QFont("Arial", 11, QtGui.QFont.Weight.Bold)
+        p.setFont(font)
+        fm = QtGui.QFontMetrics(font)
+        text_width = (
+            fm.horizontalAdvance(badge_text)
+            if hasattr(fm, "horizontalAdvance")
+            else fm.width(badge_text)
+        )
+        text_height = fm.height()
+
+        pad_x, pad_y = 12, 6
+        badge_w = text_width + pad_x * 2
+        badge_h = text_height + pad_y * 2
+        margin = 16
+
+        badge_rect = QtCore.QRectF(
+            self.width() - badge_w - margin,
+            float(margin),
+            float(badge_w),
+            float(badge_h),
+        )
+
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QtGui.QColor(48, 209, 88, 200))
+        p.drawRoundedRect(badge_rect, 6.0, 6.0)
+
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 230), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(badge_rect, 6.0, 6.0)
+
+        p.setPen(QtGui.QColor(255, 255, 255, 255))
+        p.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, badge_text)
         p.restore()
 
     def _paint_rotation_handles(self, p):
@@ -4727,6 +4767,10 @@ class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too
 
         # Brush-size preview circle follows the cursor in brush mode.
         self._paint_brush_cursor(p)
+
+        # Verified negative/background badge overlay
+        if getattr(self, "verified_empty", False) and len(self.shapes) == 0:
+            self._paint_verified_background_badge(p)
 
         p.end()
 
