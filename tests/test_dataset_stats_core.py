@@ -44,6 +44,21 @@ def test_collect_shape_sizes_skips_invalid():
     assert grouped["cat"]["heights"][0] == 20.0
 
 
+def test_collect_shape_sizes_skips_degenerate():
+    grouped = collect_shape_sizes(
+        [{"label": "dot", "points": [[5, 5], [5, 5]]}]
+    )
+    assert grouped == {}
+
+
+def test_box_size_true_geometry():
+    from anylabeling.services.dataset_stats_core import box_size
+
+    assert box_size([0, 0, 10, 20]) == (10.0, 20.0, 200.0)
+    assert box_size([5, 5, 5, 5]) is None
+    assert box_size(None) is None
+
+
 def test_compute_dataset_stats_from_metas():
     metas = [
         DatasetMeta(

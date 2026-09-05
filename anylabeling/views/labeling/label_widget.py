@@ -100,6 +100,7 @@ from .widgets import (
     LabelModifyDialog,
     GroupIDModifyDialog,
     OverviewDialog,
+    DatasetStatsDialog,
     AnnotationDiagnosticsDialog,
     AnnotationReviewDialog,
     Popup,
@@ -1070,6 +1071,14 @@ class LabelingWidget(LabelDialog):
             icon="overview",
             tip=self.tr("Show annotations statistics"),
         )
+        dataset_stats = action(
+            self.tr("Dataset Statistics..."),
+            self.dataset_statistics,
+            icon="overview",
+            tip=self.tr(
+                "Per-class size/count stats with mean/stddev and tiny-box warnings"
+            ),
+        )
         dataset_diagnostics = action(
             self.tr("Dataset Diagnostics..."),
             self.dataset_diagnostics,
@@ -1900,6 +1909,7 @@ class LabelingWidget(LabelDialog):
             toggle_contour_snap=toggle_contour_snap,
             snap_selected_to_contour=snap_selected_to_contour,
             overview=overview,
+            dataset_stats=dataset_stats,
             dataset_diagnostics=dataset_diagnostics,
             annotation_review_gallery=annotation_review_gallery,
             save_visualization_image=save_visualization_image,
@@ -2178,6 +2188,7 @@ class LabelingWidget(LabelDialog):
             self.menus.tool,
             (
                 overview,
+                dataset_stats,
                 dataset_diagnostics,
                 annotation_review_gallery,
                 None,
@@ -3486,6 +3497,28 @@ class LabelingWidget(LabelDialog):
     def overview(self):
         if self.filename:
             OverviewDialog(parent=self)
+
+    def dataset_statistics(self):
+        if self.file_list_widget.count() > 0:
+            try:
+                if getattr(self, "stats_dialog", None) is not None:
+                    try:
+                        self.stats_dialog.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            self.stats_dialog = DatasetStatsDialog(parent=self)
+            self.stats_dialog.show()
+            self.stats_dialog.raise_()
+            self.stats_dialog.activateWindow()
+        else:
+            self.warning_message(
+                self.tr("No Images"),
+                self.tr(
+                    "Please open an image folder first to view statistics."
+                ),
+            )
 
     def dataset_diagnostics(self):
         if self.file_list_widget.count() > 0:

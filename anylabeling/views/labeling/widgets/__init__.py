@@ -27,6 +27,7 @@ from .label_list_widget import LabelListWidget, LabelListWidgetItem
 from .model_dropdown_widget import SearchBar
 from .navigator_widget import NavigatorDialog
 from .overview_dialog import OverviewDialog
+from .dataset_stats_dialog import DatasetStatsDialog
 from .polygon_sides_dialog import PolygonSidesDialog
 from .ppocr_dialog import PPOCRDialog
 from .popup import Popup
