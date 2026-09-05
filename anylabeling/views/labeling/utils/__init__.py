@@ -60,6 +60,21 @@ from .shape import (
     shape_conversion,
     open_shape_converter,
 )
+from .shape_geometry import (
+    apply_class_agnostic_shape_nms,
+    apply_same_label_containment_nms,
+    box_area,
+    box_containment_ratio,
+    box_intersection,
+    box_iou,
+    box_overlap_metrics,
+    detect_duplicate_shapes,
+    get_shape_label,
+    get_shape_score,
+    get_shape_type,
+    is_duplicate_box_geometry,
+    shape_to_xyxy,
+)
 from .upload import (
     upload_image_flags_file,
     upload_label_flags_file,

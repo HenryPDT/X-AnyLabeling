@@ -15,9 +15,9 @@ from anylabeling.views.labeling.utils.opencv import (
     get_bounding_boxes,
     qt_img_to_rgb_cv_img,
 )
-from anylabeling.services.auto_labeling.utils import (
+from anylabeling.services.auto_labeling.utils import calculate_rotation_theta
+from anylabeling.views.labeling.utils.shape_geometry import (
     apply_class_agnostic_shape_nms,
-    calculate_rotation_theta,
 )
 
 from .model import Model

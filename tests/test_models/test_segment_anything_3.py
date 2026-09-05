@@ -83,7 +83,7 @@ def test_sam3_splits_and_deduplicates_text_prompts():
 def test_sam3_class_agnostic_nms_keeps_higher_score_overlap():
     from PyQt6 import QtCore
 
-    from anylabeling.services.auto_labeling.utils import (
+    from anylabeling.views.labeling.utils.shape_geometry import (
         apply_class_agnostic_shape_nms,
     )
     from anylabeling.views.labeling.shape import Shape
@@ -118,7 +118,7 @@ def test_sam3_class_agnostic_nms_keeps_higher_score_overlap():
 def test_sam3_class_agnostic_nms_disabled_when_iou_zero():
     from PyQt6 import QtCore
 
-    from anylabeling.services.auto_labeling.utils import (
+    from anylabeling.views.labeling.utils.shape_geometry import (
         apply_class_agnostic_shape_nms,
     )
     from anylabeling.views.labeling.shape import Shape
@@ -146,7 +146,7 @@ def test_sam3_class_agnostic_nms_disabled_when_iou_zero():
 def test_sam3_nms_preserves_box_and_mask_for_same_object():
     from PyQt6 import QtCore
 
-    from anylabeling.services.auto_labeling.utils import (
+    from anylabeling.views.labeling.utils.shape_geometry import (
         apply_class_agnostic_shape_nms,
     )
     from anylabeling.views.labeling.shape import Shape
@@ -186,7 +186,7 @@ def test_sam3_nms_preserves_box_and_mask_for_same_object():
 def test_sam3_same_label_containment_drops_nested_box():
     from PyQt6 import QtCore
 
-    from anylabeling.services.auto_labeling.utils import (
+    from anylabeling.views.labeling.utils.shape_geometry import (
         apply_class_agnostic_shape_nms,
     )
     from anylabeling.views.labeling.shape import Shape
@@ -230,7 +230,7 @@ def test_sam3_same_label_containment_drops_nested_box():
 def test_sam3_containment_keep_area_prefers_larger_box():
     from PyQt6 import QtCore
 
-    from anylabeling.services.auto_labeling.utils import (
+    from anylabeling.views.labeling.utils.shape_geometry import (
         apply_class_agnostic_shape_nms,
     )
     from anylabeling.views.labeling.shape import Shape
@@ -291,7 +291,7 @@ def test_sam3_config_includes_iou_threshold():
 def test_sam3_nms_preserves_shapes_without_bounding_box():
     from PyQt6 import QtCore
 
-    from anylabeling.services.auto_labeling.utils import (
+    from anylabeling.views.labeling.utils.shape_geometry import (
         apply_class_agnostic_shape_nms,
     )
     from anylabeling.views.labeling.shape import Shape
