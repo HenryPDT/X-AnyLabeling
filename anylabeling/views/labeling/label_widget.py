@@ -92,6 +92,7 @@ from .widgets import (
     LabelModifyDialog,
     GroupIDModifyDialog,
     OverviewDialog,
+    AnnotationDiagnosticsDialog,
     Popup,
     SearchBar,
     ToolBar,
@@ -1031,6 +1032,14 @@ class LabelingWidget(LabelDialog):
             icon="overview",
             tip=self.tr("Show annotations statistics"),
         )
+        dataset_diagnostics = action(
+            self.tr("Dataset Diagnostics..."),
+            self.dataset_diagnostics,
+            icon="overview",
+            tip=self.tr(
+                "Scan dataset for duplicates, micro-noise, corrupt shapes, and duplicate images"
+            ),
+        )
         save_crop = action(
             self.tr("Save Cropped Image"),
             lambda: utils.save_crop(self),
@@ -1819,6 +1828,7 @@ class LabelingWidget(LabelDialog):
             paste=paste,
             toggle_shape_lock=toggle_shape_lock,
             overview=overview,
+            dataset_diagnostics=dataset_diagnostics,
             save_visualization_image=save_visualization_image,
             save_visualization_video=save_visualization_video,
             undo_last_point=undo_last_point,
@@ -2087,6 +2097,7 @@ class LabelingWidget(LabelDialog):
             self.menus.tool,
             (
                 overview,
+                dataset_diagnostics,
                 None,
                 save_crop,
                 save_visualization_image,
@@ -3359,6 +3370,20 @@ class LabelingWidget(LabelDialog):
     def overview(self):
         if self.filename:
             OverviewDialog(parent=self)
+
+    def dataset_diagnostics(self):
+        if self.file_list_widget.count() > 0:
+            self.diagnostics_dialog = AnnotationDiagnosticsDialog(parent=self)
+            self.diagnostics_dialog.show()
+            self.diagnostics_dialog.raise_()
+            self.diagnostics_dialog.activateWindow()
+        else:
+            self.warning_message(
+                self.tr("No Images"),
+                self.tr(
+                    "Please open an image folder first to run dataset diagnostics."
+                ),
+            )
 
     def digit_shortcut_manager(self):
         digit_shortcut_dialog = DigitShortcutDialog(parent=self)

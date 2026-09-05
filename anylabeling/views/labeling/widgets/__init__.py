@@ -1,6 +1,7 @@
 # flake8: noqa
 
 from .about_dialog import AboutDialog
+from .annotation_diagnostics_dialog import AnnotationDiagnosticsDialog
 from .auto_labeling import AutoLabelingWidget
 from .canvas import Canvas
 from .canvas_adjustment import (
