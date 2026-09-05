@@ -351,6 +351,8 @@ class SettingsRuntimeApplier:
         )
         self._widget.crosshair_settings = dict(crosshair)
         self._widget.crosshair_settings["width"] = float(width)
+        if hasattr(self._widget, "update_crosshair_color"):
+            self._widget.update_crosshair_color()
 
     def apply_canvas_brush(self) -> None:
         brush = self._widget._config["canvas"]["brush"]

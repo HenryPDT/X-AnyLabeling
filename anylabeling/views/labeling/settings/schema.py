@@ -110,6 +110,8 @@ def _settings_translation_markers() -> None:
     QCoreApplication.translate("SettingsDialog", "Crosshair Width")
     QCoreApplication.translate("SettingsDialog", "Crosshair Color")
     QCoreApplication.translate("SettingsDialog", "Crosshair Opacity")
+    QCoreApplication.translate("SettingsDialog", "Sync Crosshair Color")
+    QCoreApplication.translate("SettingsDialog", "Quick Digit Labeling")
     QCoreApplication.translate("SettingsDialog", "Background Color")
     QCoreApplication.translate("SettingsDialog", "Border Color")
     QCoreApplication.translate("SettingsDialog", "Text Color")
@@ -204,6 +206,14 @@ def _settings_translation_markers() -> None:
         "SettingsDialog", "Set the opacity of the crosshair guides."
     )
     QCoreApplication.translate(
+        "SettingsDialog",
+        "Match the crosshair and drawing guide color to the currently active or selected label.",
+    )
+    QCoreApplication.translate(
+        "SettingsDialog",
+        "Use number keys 1-9 and 0 to quickly assign the 1st through 10th project classes to selected shapes, or select the active label.",
+    )
+    QCoreApplication.translate(
         "SettingsDialog", "Set the background color of attribute overlays."
     )
     QCoreApplication.translate(
@@ -278,6 +288,7 @@ SETTINGS_GENERAL_KEYS = (
     "model_hub",
     "logger_level",
     "qt_image_allocation_limit",
+    "quick_digit_labels",
 )
 
 SETTINGS_SHAPE_KEYS = (
@@ -634,6 +645,20 @@ def _non_shortcut_fields() -> list[SettingField]:
             "Layout",
         ),
         SettingField(
+            "quick_digit_labels",
+            QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT, "Quick Digit Labeling"
+            ),
+            "bool",
+            "General",
+            "Label Dialog",
+            "Shortcuts",
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "Use number keys 1-9 and 0 to quickly assign the 1st through 10th project classes to selected shapes, or select the active label.",
+            ),
+        ),
+        SettingField(
             "shape_color",
             QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT, "Shape Color Strategy"
@@ -947,6 +972,20 @@ def _non_shortcut_fields() -> list[SettingField]:
             description=QT_TRANSLATE_NOOP(
                 SETTINGS_TRANSLATION_CONTEXT,
                 "Set the opacity of the crosshair guides.",
+            ),
+        ),
+        SettingField(
+            "canvas.crosshair.sync_label_color",
+            QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT, "Sync Crosshair Color"
+            ),
+            "bool",
+            "Canvas",
+            "Interaction",
+            "Crosshair",
+            description=QT_TRANSLATE_NOOP(
+                SETTINGS_TRANSLATION_CONTEXT,
+                "Match the crosshair and drawing guide color to the currently active or selected label.",
             ),
         ),
         SettingField(

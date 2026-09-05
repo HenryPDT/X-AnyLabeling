@@ -24,14 +24,14 @@ except Exception:
 class TestSettingsSchema(unittest.TestCase):
 
     def test_field_count(self):
-        self.assertEqual(len(SETTING_FIELDS), 134)
+        self.assertEqual(len(SETTING_FIELDS), 136)
 
     def test_shortcut_and_non_shortcut_count(self):
         shortcut_fields = [
             field for field in SETTING_FIELDS if field.primary == "Shortcuts"
         ]
         self.assertEqual(len(shortcut_fields), 79)
-        self.assertEqual(len(SETTING_FIELDS) - len(shortcut_fields), 55)
+        self.assertEqual(len(SETTING_FIELDS) - len(shortcut_fields), 57)
 
     def test_defaults_cover_all_keys(self):
         defaults = defaults_map()
@@ -43,6 +43,7 @@ class TestSettingsSchema(unittest.TestCase):
             "auto_switch_to_edit_mode",
             "system_clipboard",
             "font_family",
+            "quick_digit_labels",
             "shape.line_color",
             "canvas.label_font_size",
             "canvas.mask.opacity",
@@ -50,6 +51,7 @@ class TestSettingsSchema(unittest.TestCase):
             "canvas.crosshair.width",
             "canvas.crosshair.color",
             "canvas.crosshair.opacity",
+            "canvas.crosshair.sync_label_color",
             "canvas.brush.point_distance",
             "canvas.brush.simplify_epsilon",
             "canvas.magic_wand.default_threshold",
@@ -80,7 +82,7 @@ class TestSettingsSchema(unittest.TestCase):
             SETTINGS_PRIMARY_ORDER,
             ("Shortcuts", "General", "Shape", "Canvas"),
         )
-        self.assertEqual(len(SETTINGS_GENERAL_KEYS), 9)
+        self.assertEqual(len(SETTINGS_GENERAL_KEYS), 10)
         self.assertEqual(len(SETTINGS_SHAPE_KEYS), 9)
         self.assertEqual(len(SETTINGS_SHORTCUT_KEYS_CORE), 24)
         for key in SETTINGS_GENERAL_KEYS:
@@ -112,13 +114,14 @@ class TestSettingsSchema(unittest.TestCase):
         )
         for key in SETTINGS_SHORTCUT_KEYS_CORE:
             self.assertIn(key, [field.key for field in shortcut_fields])
-        self.assertEqual(len(canvas_fields), 27)
+        self.assertEqual(len(canvas_fields), 28)
         canvas_keys = {field.key for field in canvas_fields}
         self.assertIn("canvas.label_font_size", canvas_keys)
         self.assertIn("canvas.crosshair.show", canvas_keys)
         self.assertIn("canvas.crosshair.width", canvas_keys)
         self.assertIn("canvas.crosshair.color", canvas_keys)
         self.assertIn("canvas.crosshair.opacity", canvas_keys)
+        self.assertIn("canvas.crosshair.sync_label_color", canvas_keys)
         self.assertIn("canvas.brush.point_distance", canvas_keys)
         self.assertIn("canvas.brush.simplify_epsilon", canvas_keys)
         self.assertIn("canvas.magic_wand.default_threshold", canvas_keys)

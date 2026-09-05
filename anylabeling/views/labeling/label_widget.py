@@ -306,6 +306,9 @@ class LabelingWidget(LabelDialog):
         self.unique_label_list.setStyleSheet(
             "QListWidget::item { padding: 0; }"
         )
+        self.unique_label_list.itemSelectionChanged.connect(
+            self.on_unique_label_selection_changed
+        )
 
         self.shape_text_label = QLabel("Object Text")
         self.shape_text_edit = QPlainTextEdit()
@@ -841,70 +844,70 @@ class LabelingWidget(LabelDialog):
         )
         digit_shortcut_0 = action(
             self.tr("Digit Shortcut 0"),
-            lambda: self.create_digit_mode(0),
+            lambda: self.handle_digit_shortcut(0),
             "0",
             "digit0",
             enabled=False,
         )
         digit_shortcut_1 = action(
             self.tr("Digit Shortcut 1"),
-            lambda: self.create_digit_mode(1),
+            lambda: self.handle_digit_shortcut(1),
             "1",
             "digit1",
             enabled=False,
         )
         digit_shortcut_2 = action(
             self.tr("Digit Shortcut 2"),
-            lambda: self.create_digit_mode(2),
+            lambda: self.handle_digit_shortcut(2),
             "2",
             "digit2",
             enabled=False,
         )
         digit_shortcut_3 = action(
             self.tr("Digit Shortcut 3"),
-            lambda: self.create_digit_mode(3),
+            lambda: self.handle_digit_shortcut(3),
             "3",
             "digit3",
             enabled=False,
         )
         digit_shortcut_4 = action(
             self.tr("Digit Shortcut 4"),
-            lambda: self.create_digit_mode(4),
+            lambda: self.handle_digit_shortcut(4),
             "4",
             "digit4",
             enabled=False,
         )
         digit_shortcut_5 = action(
             self.tr("Digit Shortcut 5"),
-            lambda: self.create_digit_mode(5),
+            lambda: self.handle_digit_shortcut(5),
             "5",
             "digit5",
             enabled=False,
         )
         digit_shortcut_6 = action(
             self.tr("Digit Shortcut 6"),
-            lambda: self.create_digit_mode(6),
+            lambda: self.handle_digit_shortcut(6),
             "6",
             "digit6",
             enabled=False,
         )
         digit_shortcut_7 = action(
             self.tr("Digit Shortcut 7"),
-            lambda: self.create_digit_mode(7),
+            lambda: self.handle_digit_shortcut(7),
             "7",
             "digit7",
             enabled=False,
         )
         digit_shortcut_8 = action(
             self.tr("Digit Shortcut 8"),
-            lambda: self.create_digit_mode(8),
+            lambda: self.handle_digit_shortcut(8),
             "8",
             "digit8",
             enabled=False,
         )
         digit_shortcut_9 = action(
             self.tr("Digit Shortcut 9"),
-            lambda: self.create_digit_mode(9),
+            lambda: self.handle_digit_shortcut(9),
             "9",
             "digit9",
             enabled=False,
@@ -3077,6 +3080,8 @@ class LabelingWidget(LabelDialog):
         self.label_filter_combobox.text_box.clear()
         self.gid_filter_combobox.gid_box.clear()
         self._update_select_toggle_button_tooltip()
+        if hasattr(self, "update_crosshair_color"):
+            self.update_crosshair_color()
 
     def toggle_select_all(self):
         if self.select_toggle_action is None:
@@ -3198,6 +3203,8 @@ class LabelingWidget(LabelDialog):
         self.load_shapes(self.canvas.shapes, update_last_label=False)
         self.actions.undo.setEnabled(self.canvas.is_shape_restorable)
         self.set_dirty()
+        if hasattr(self, "update_crosshair_color"):
+            self.update_crosshair_color()
 
     def get_label_file_list(self):
         label_file_list = []
@@ -3651,6 +3658,248 @@ class LabelingWidget(LabelDialog):
         self.actions.delete.setEnabled(not drawing)
         self.actions.union_selection.setEnabled(not drawing)
         self.update_labeling_instruction()
+
+    def on_unique_label_selection_changed(self):
+        items = self.unique_label_list.selectedItems()
+        if items:
+            label = items[0].data(QtCore.Qt.ItemDataRole.UserRole)
+            self.digit_to_label = label
+        elif getattr(self, "digit_to_label", None):
+            self.digit_to_label = None
+        self.update_crosshair_color()
+
+    def update_crosshair_color(self, label=None):
+        """Update canvas crosshair color to match active label if enabled."""
+        if not hasattr(self, "canvas") or self.canvas is None:
+            return
+
+        crosshair_cfg = self._config.get("canvas", {}).get("crosshair", {})
+        sync_label_color = crosshair_cfg.get("sync_label_color", True)
+        default_color = crosshair_cfg.get("color", "#00FF00")
+
+        if not sync_label_color:
+            self.canvas.cross_line_color = default_color
+            self.canvas.update()
+            return
+
+        target_label = label
+        if not target_label:
+            selected = getattr(self.canvas, "selected_shapes", [])
+            if selected:
+                target_label = selected[-1].label
+
+        if not target_label and getattr(self, "digit_to_label", None):
+            target_label = self.digit_to_label
+
+        if not target_label and hasattr(self, "unique_label_list"):
+            items = self.unique_label_list.selectedItems()
+            if items:
+                target_label = items[0].data(QtCore.Qt.ItemDataRole.UserRole)
+
+        if not target_label and self._config.get("auto_use_last_label"):
+            target_label = self.find_last_label()
+
+        if target_label:
+            try:
+                rgb = self._get_rgb_by_label(target_label)
+                if rgb:
+                    r, g, b = rgb[:3]
+                    hex_color = (
+                        f"#{int(r):02x}{int(g):02x}{int(b):02x}".upper()
+                    )
+                    self.canvas.cross_line_color = hex_color
+                    self.canvas.update()
+                    return
+            except Exception:
+                pass
+
+        self.canvas.cross_line_color = default_color
+        self.canvas.update()
+
+    def _get_target_label_for_digit(self, digit_num):
+        """Return the target label string for a numeric key (1-9, 0)."""
+        if hasattr(self, "drawing_digit_shortcuts") and isinstance(
+            self.drawing_digit_shortcuts, dict
+        ):
+            custom_data = self.drawing_digit_shortcuts.get(
+                digit_num
+            ) or self.drawing_digit_shortcuts.get(str(digit_num))
+            if isinstance(custom_data, dict) and custom_data.get("label"):
+                return custom_data.get("label")
+
+        classes = self.get_project_classes()
+        target_index = 9 if digit_num == 0 else digit_num - 1
+        if 0 <= target_index < len(classes):
+            return classes[target_index]
+        return None
+
+    def _select_unique_label_item(self, label):
+        """Highlight the given label in the unique label dock widget."""
+        if not hasattr(self, "unique_label_list") or not label:
+            return
+        items = self.unique_label_list.find_items_by_label(label)
+        if items:
+            self.unique_label_list.setCurrentItem(items[0])
+
+    def assign_label_to_shapes(self, shapes, new_label):
+        """Assign a new label to one or more shapes with undo support."""
+        if not shapes or not new_label:
+            return False
+
+        if not self.validate_label(new_label):
+            self.error_message(
+                self.tr("Invalid label"),
+                self.tr("Invalid label '{}' with validation type '{}'").format(
+                    new_label, self._config.get("validate_label", "")
+                ),
+            )
+            return False
+
+        # Filter unlocked shapes
+        target_shapes = [
+            shape for shape in shapes if not getattr(shape, "locked", False)
+        ]
+        if not target_shapes:
+            try:
+                self.status(self.tr("Selected shape(s) are locked"))
+            except Exception:
+                pass
+            return False
+
+        self.canvas.store_shapes()
+        changed = False
+
+        for shape in target_shapes:
+            text = new_label
+            if self.attributes and text and text != shape.label:
+                text = self.reset_attribute(text, shape)
+
+            shape.label = text
+            self._update_shape_color(shape)
+
+            item = self.label_list.find_item_by_shape(shape)
+            if item is not None:
+                color = shape.fill_color.getRgb()[:3]
+                if shape.group_id is None:
+                    item.setText(
+                        _format_label_list_text(shape.label, shape.group_id)
+                    )
+                    item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
+                else:
+                    item.setText(
+                        _format_label_list_text(shape.label, shape.group_id)
+                    )
+            changed = True
+
+        if changed:
+            if hasattr(self, "label_dialog") and hasattr(
+                self.label_dialog, "add_label_history"
+            ):
+                self.label_dialog.add_label_history(new_label)
+
+            if hasattr(self, "unique_label_list"):
+                if not self.unique_label_list.find_items_by_label(new_label):
+                    unique_label_item = (
+                        self.unique_label_list.create_item_from_label(
+                            new_label
+                        )
+                    )
+                    self.unique_label_list.addItem(unique_label_item)
+                    rgb = self._get_rgb_by_label(new_label)
+                    self.unique_label_list.set_item_label(
+                        unique_label_item, new_label, rgb, LABEL_OPACITY
+                    )
+                    self.unique_label_list.refresh_indices()
+
+            self.canvas.update()
+            self.set_dirty()
+            self._refresh_shape_filters()
+            self._select_unique_label_item(new_label)
+            self.update_crosshair_color(new_label)
+            if self.attributes and len(self.canvas.selected_shapes) == 1:
+                for idx, s in enumerate(self.canvas.shapes):
+                    if s == self.canvas.selected_shapes[0]:
+                        self.update_attributes(idx)
+                        break
+            elif self.attributes and not self.canvas.selected_shapes:
+                self.hide_attributes_panel()
+            try:
+                self.status(
+                    self.tr("Set label to '{label}'").format(label=new_label)
+                )
+            except Exception:
+                pass
+            return True
+
+        return False
+
+    def handle_digit_shortcut(self, digit_num):
+        """Handle numeric key (1-9, 0) shortcut press."""
+        quick_digit_labels = self._config.get("quick_digit_labels", True)
+        if not quick_digit_labels:
+            self.create_digit_mode(digit_num)
+            return
+
+        # Case 1: Shapes are selected on the canvas -> Reclassify selected shape(s)
+        selected_shapes = getattr(self.canvas, "selected_shapes", [])
+        if selected_shapes:
+            target_label = self._get_target_label_for_digit(digit_num)
+            if target_label:
+                self.assign_label_to_shapes(selected_shapes, target_label)
+            else:
+                try:
+                    self.status(
+                        self.tr("No class defined for key '{digit}'").format(
+                            digit=digit_num
+                        )
+                    )
+                except Exception:
+                    pass
+            return
+
+        # Case 2: No shapes selected -> Check if explicit drawing mode is configured
+        if hasattr(self, "drawing_digit_shortcuts") and isinstance(
+            self.drawing_digit_shortcuts, dict
+        ):
+            custom_data = self.drawing_digit_shortcuts.get(
+                digit_num
+            ) or self.drawing_digit_shortcuts.get(str(digit_num))
+            create_mode = (
+                custom_data.get("mode", None)
+                if isinstance(custom_data, dict)
+                else None
+            )
+            if create_mode in Shape.get_supported_shape():
+                label = custom_data.get("label", "object")
+                self.digit_to_label = label
+                self.toggle_draw_mode(edit=False, create_mode=create_mode)
+                self._select_unique_label_item(label)
+                self.update_crosshair_color(label)
+                return
+
+        # Case 3: No shapes selected and no shape mode override -> Select active label for drawing
+        target_label = self._get_target_label_for_digit(digit_num)
+        if target_label:
+            self.digit_to_label = target_label
+            self._select_unique_label_item(target_label)
+            self.update_crosshair_color(target_label)
+            try:
+                self.status(
+                    self.tr("Selected label '{label}' for drawing").format(
+                        label=target_label
+                    )
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                self.status(
+                    self.tr("No class defined for key '{digit}'").format(
+                        digit=digit_num
+                    )
+                )
+            except Exception:
+                pass
 
     def create_digit_mode(self, digit_num):
         if self.drawing_digit_shortcuts is None:
@@ -4879,6 +5128,8 @@ class LabelingWidget(LabelDialog):
                     break
         else:
             self.hide_attributes_panel()
+        if hasattr(self, "update_crosshair_color"):
+            self.update_crosshair_color()
 
     def add_label(self, shape, update_last_label=True, refresh_filters=True):
         if shape.group_id is None:
@@ -5430,6 +5681,8 @@ class LabelingWidget(LabelDialog):
             else:
                 self.canvas.undo_last_line()
                 self.canvas.shapes_backups.pop()
+        if hasattr(self, "update_crosshair_color"):
+            self.update_crosshair_color()
 
     def show_shape(self, shape_height, shape_width, pos):
         """Display annotation width and height while hovering inside.

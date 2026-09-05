@@ -5452,7 +5452,7 @@ class Canvas(
         self._hovered_group_id = None
         self.update()
 
-    def set_cross_line(self, show, width, color, opacity):
+    def set_cross_line(self, show, width, color, opacity, **kwargs):
         """Set cross line options"""
         self.cross_line_show = show
         self.cross_line_width = width

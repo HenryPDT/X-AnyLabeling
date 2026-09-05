@@ -110,6 +110,7 @@ canvas:
     width: 2.0
     color: "#00FF00"
     opacity: 0.5
+    sync_label_color: true
   attributes:
     background_color: [33, 33, 33, 255]
     border_color: [66, 66, 66, 255]
@@ -229,3 +230,4 @@ remote_server_settings:
 
 # Digit shortcuts
 digit_shortcuts: null
+quick_digit_labels: true

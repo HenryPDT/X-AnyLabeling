@@ -102,7 +102,10 @@ class DigitShortcutDialog(QtWidgets.QDialog):
 
         # Header label
         header_label = QtWidgets.QLabel(
-            self.tr("Configure digit keys (0-9) for quick shape creation:")
+            self.tr(
+                "Configure digit keys (1-9, 0) for drawing modes or custom labels.\n"
+                "Unassigned keys automatically map to project classes in order (1 -> 1st class, etc.)."
+            )
         )
         header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(header_label)
@@ -175,12 +178,17 @@ class DigitShortcutDialog(QtWidgets.QDialog):
             ):
                 label_edit.setText(self.digit_shortcuts[int(digit)]["label"])
 
-            if (
-                int(digit) not in self.digit_shortcuts
-                or "mode" not in self.digit_shortcuts[int(digit)]
-                or self.digit_shortcuts[int(digit)]["mode"] is None
-            ):
-                label_edit.setEnabled(False)
+            current_mode = (
+                self.digit_shortcuts.get(int(digit), {}).get("mode", None)
+                if int(digit) in self.digit_shortcuts
+                else None
+            )
+            if current_mode is not None:
+                label_edit.setPlaceholderText(self.tr("Required"))
+            else:
+                label_edit.setPlaceholderText(
+                    self.tr("Optional / Auto (project class)")
+                )
 
             label_container = QtWidgets.QWidget()
             label_layout = QtWidgets.QHBoxLayout(label_container)
@@ -230,20 +238,17 @@ class DigitShortcutDialog(QtWidgets.QDialog):
         return container.findChild(QtWidgets.QLineEdit)
 
     def on_mode_changed(self, digit, index):
-        """Enable/disable label field based on mode selection"""
+        """Update placeholder and styling based on mode selection"""
         combo = self._get_combo(digit)
         label_edit = self._get_label_edit(digit)
 
-        # Enable label field only if a valid mode is selected
         mode = combo.itemData(index)
-        label_edit.setEnabled(mode is not None)
-
+        label_edit.setStyleSheet("")
         if mode is None:
-            label_edit.clear()
-            label_edit.setPlaceholderText("")
-            label_edit.setStyleSheet("")
+            label_edit.setPlaceholderText(
+                self.tr("Optional / Auto (project class)")
+            )
         else:
-            label_edit.setStyleSheet("")
             label_edit.setPlaceholderText(self.tr("Required"))
 
     def reset_settings(self):
@@ -268,7 +273,10 @@ class DigitShortcutDialog(QtWidgets.QDialog):
 
                 label_edit = self._get_label_edit(digit)
                 label_edit.clear()
-                label_edit.setEnabled(False)
+                label_edit.setStyleSheet("")
+                label_edit.setPlaceholderText(
+                    self.tr("Optional / Auto (project class)")
+                )
 
     def save_settings(self):
         """Save settings to parent and close dialog"""
@@ -296,6 +304,8 @@ class DigitShortcutDialog(QtWidgets.QDialog):
 
             if mode is not None and label:
                 result[int(digit)] = {"mode": mode, "label": label}
+            elif mode is None and label:
+                result[int(digit)] = {"mode": None, "label": label}
 
         if has_error:
             QtWidgets.QMessageBox.warning(

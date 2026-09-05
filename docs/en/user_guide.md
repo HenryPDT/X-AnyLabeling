@@ -759,37 +759,39 @@ Rules:
 > [!WARNING]
 > Some conversions lose rotation angles, exact boundaries, or curve details and cannot be reversed. Back up annotations before batch conversion.
 
-### 5.5 Digit Shortcut Manager
+### 5.5 Digit Shortcut Manager & Quick Digit Labeling
 
 <p align="center">
   <img src="../../assets/resources/digit_shortcut_manager.png" alt="Digit Shortcut Manager for assigning drawing modes and default labels to numeric keys">
 </p>
 
-The Digit Shortcut Manager assigns a drawing mode and default label to each numeric key (0–9). Open it from **Tools > Digit Shortcut Manager** or press `Alt+D`.
+The Digit Shortcut Manager assigns drawing modes and labels to numeric keys (`1`–`9`, `0`). Open it from **Tools > Digit Shortcut Manager** or press `Alt+D`.
 
-In the Digit Shortcut Manager dialog, users can see a table containing all numeric keys (0-9), with each row including the following information:
+#### Quick Digit Labeling (Automatic 1–9, 0 Mapping)
+When quick digit labeling is enabled (default), number keys provide instant class switching based on the project's class list order:
+- **With selected shape(s)**: Pressing `1` assigns the 1st project class, `2` assigns the 2nd class, ..., `9` assigns the 9th class, and `0` assigns the 10th class to all selected shapes immediately, without opening the label dialog. Full undo (`Ctrl+Z`) is supported.
+- **Without selected shapes**: Pressing a numeric key selects that class in the **Labels** dock and presets it as the active label for the current or next shape.
 
+#### Custom Digit Shortcuts
+In the Digit Shortcut Manager dialog (`Alt+D`), users can customize specific digit keys:
 - **Digit**: Represents the numeric key (0-9) on the keyboard
-- **Drawing Mode**: Choose the type of shape to draw from the dropdown menu, including rectangle, cuboid, polygon, rotation, quadrilateral, circle, line, point, linestrip, or none
-- **Label**: Specify the default label name for the shape (required)
+- **Drawing Mode**: Choose the type of shape to draw from the dropdown menu (rectangle, cuboid, polygon, rotation, quadrilateral, circle, line, point, linestrip), or None (label-only assignment)
+- **Label**: Specify the label name
 
-**Configuring Shortcuts**: Select the drawing mode corresponding to the digit, enter the default label name for that shape (required when a drawing mode is enabled), then click **OK** to save the settings.
+**Configuring Shortcuts**: Select the drawing mode corresponding to the digit (or None for label-only), enter the label name, then click **OK** to save the settings. If a drawing mode is assigned, pressing the digit when no shapes are selected switches to that drawing mode with the preset label.
 
-**Resetting Shortcuts**: Click the **Reset** button to clear all shortcut settings. The system will display a confirmation dialog, and all configurations will be cleared after confirmation.
+**Resetting Shortcuts**: Click the **Reset** button to clear all shortcut settings. Unassigned keys automatically fall back to the project class list mapping.
 
-**Using Shortcuts**: In the labeling interface, simply press the configured numeric key (0-9). The system will automatically switch to the corresponding drawing mode with the preset label name. After drawing is complete, the annotation will automatically use the preset label name.
-
-**Offline Configuration**: In addition to configuration through the GUI interface, users can directly configure shortcuts in the `.xanylabelingrc` configuration file in their user directory. The configuration format is as follows:
+**Offline Configuration**: In addition to configuration through the GUI interface, users can directly configure shortcuts in the `.xanylabelingrc` configuration file in their user directory:
 
 ```yaml
 digit_shortcuts:
   0: {mode: polygon, label: person}
   1: {mode: rectangle, label: car}
-  2: {mode: rotation, label: truck}
+  2: {mode: null, label: truck}
   # More configurations...
+quick_digit_labels: true
 ```
-
-Settings made in the interface are saved to `.xanylabelingrc` and loaded at the next startup. Manual configuration changes also take effect after restarting the application.
 
 ### 5.6 Group ID Manager
 
