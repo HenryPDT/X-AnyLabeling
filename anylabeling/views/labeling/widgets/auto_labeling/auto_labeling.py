@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from anylabeling.services.auto_labeling.model_manager import ModelManager
+from anylabeling.services.model_type import normalize_model_type
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import (
     _AUTO_LABELING_IOU_MODELS,
@@ -1130,15 +1131,20 @@ class AutoLabelingWidget(QWidget):
         )
 
         # Update specific mode in UI if specific model is loaded
-        if model_config.get("type") == "upn":
+        # NOTE: use normalized comparison so "grounding_dino",
+        # "groundingdino", and "grounding-dino" all match. Local
+        # grounding_dino uses edit_text via Meta.widgets (no mode
+        # combobox); only the API variant syncs gd_select_combobox.
+        normalized_type = normalize_model_type(model_config.get("type"))
+        if normalized_type == "upn":
             self.update_upn_mode_ui()
-        elif model_config.get("type") == "florence2":
+        elif normalized_type == "florence2":
             self.update_florence2_mode_ui()
-        elif model_config.get("type") == "groundingdino":
+        elif normalized_type in ("groundingdino", "groundingdinoapi"):
             self.update_groundingdino_mode_ui()
-        elif model_config.get("type") == "remote_server":
+        elif normalized_type == "remoteserver":
             self.update_remote_server_mode_ui()
-        elif model_config.get("type") == "segment_anything_3":
+        elif normalized_type == "segmentanything3":
             self.edit_containment.setValue(
                 model_config.get("containment_threshold", 0.5)
             )
@@ -1149,31 +1155,87 @@ class AutoLabelingWidget(QWidget):
 
     def update_upn_mode_ui(self):
         """Update UPN mode combobox to reflect current backend state"""
-        current_mode = self.model_manager.loaded_model_config[
-            "model"
-        ].prompt_type
-        index = self.upn_select_combobox.findData(current_mode)
-        if index != -1:
-            self.upn_select_combobox.setCurrentIndex(index)
+        try:
+            loaded = getattr(self.model_manager, "loaded_model_config", None)
+            if not loaded or "model" not in loaded:
+                return
+            model = loaded["model"]
+            current_mode = getattr(model, "prompt_type", None)
+            if current_mode is None:
+                return
+            if not hasattr(self, "upn_select_combobox"):
+                return
+            index = self.upn_select_combobox.findData(current_mode)
+            if index != -1:
+                self.upn_select_combobox.blockSignals(True)
+                try:
+                    self.upn_select_combobox.setCurrentIndex(index)
+                finally:
+                    self.upn_select_combobox.blockSignals(False)
+        except Exception as exc:
+            logger.debug(f"update_upn_mode_ui skipped: {exc}")
+            return
 
     def update_groundingdino_mode_ui(self):
-        """Update GroundingDino mode combobox to reflect current backend state"""
-        current_mode = self.model_manager.loaded_model_config[
-            "model"
-        ].prompt_type
-        index = self.gd_select_combobox.findData(current_mode)
-        if index != -1:
-            self.gd_select_combobox.setCurrentIndex(index)
+        """Update GroundingDino mode combobox to reflect backend state.
+
+        Only the API variant exposes a mode combobox (model_name);
+        local grounding_dino uses free-form edit_text and is a no-op.
+        Never raises: missing attrs safely return.
+        """
+        try:
+            loaded = getattr(self.model_manager, "loaded_model_config", None)
+            if not loaded or "model" not in loaded:
+                return
+            if not hasattr(self, "gd_select_combobox"):
+                return
+            model = loaded["model"]
+            # API variant stores e.g. "GroundingDino-1.6-Pro".
+            model_name = getattr(model, "model_name", None)
+            if model_name is None:
+                # Local ONNX variant has no mode combobox state.
+                return
+            reverse_modes = {
+                "GroundingDino-1.6-Pro": "GroundingDino_1_6_Pro",
+                "GroundingDino-1.6-Edge": "GroundingDino_1_6_Edge",
+                "GroundingDino-1.5-Pro": "GroundingDino_1_5_Pro",
+                "GroundingDino-1.5-Edge": "GroundingDino_1_5_Edge",
+            }
+            current_mode = reverse_modes.get(model_name, model_name)
+            index = self.gd_select_combobox.findData(current_mode)
+            if index != -1:
+                self.gd_select_combobox.blockSignals(True)
+                try:
+                    self.gd_select_combobox.setCurrentIndex(index)
+                finally:
+                    self.gd_select_combobox.blockSignals(False)
+        except Exception as exc:
+            logger.debug(f"update_groundingdino_mode_ui skipped: {exc}")
+            return
 
     def update_florence2_mode_ui(self):
         """Update Florence2 mode combobox to reflect current backend state"""
-        current_mode = self.model_manager.loaded_model_config[
-            "model"
-        ].prompt_type
-        index = self.florence2_select_combobox.findData(current_mode)
-        if index != -1:
-            self.florence2_select_combobox.setCurrentIndex(index)
-        self.update_florence2_widgets(current_mode)
+        try:
+            loaded = getattr(self.model_manager, "loaded_model_config", None)
+            if not loaded or "model" not in loaded:
+                return
+            model = loaded["model"]
+            current_mode = getattr(model, "prompt_type", None)
+            if current_mode is None:
+                return
+            if not hasattr(self, "florence2_select_combobox"):
+                return
+            index = self.florence2_select_combobox.findData(current_mode)
+            if index != -1:
+                self.florence2_select_combobox.blockSignals(True)
+                try:
+                    self.florence2_select_combobox.setCurrentIndex(index)
+                finally:
+                    self.florence2_select_combobox.blockSignals(False)
+            self.update_florence2_widgets(current_mode)
+        except Exception as exc:
+            logger.debug(f"update_florence2_mode_ui skipped: {exc}")
+            return
 
     def on_output_modes_changed(self, output_modes, default_output_mode):
         """Handle output modes changed"""
@@ -1418,11 +1480,17 @@ class AutoLabelingWidget(QWidget):
     def update_florence2_widgets(self, mode):
         """Update widget visibility based on Florence2 mode"""
         # Check if Florence2 model is loaded
-        if (
-            not self.model_manager.loaded_model_config
-            or self.model_manager.loaded_model_config.get("type")
-            != "florence2"
-        ):
+        # NOTE: lenient normalized check for UI dispatch; backend
+        # ModelManager keeps strict exact matching.
+        loaded_type = ""
+        try:
+            if self.model_manager.loaded_model_config:
+                loaded_type = self.model_manager.loaded_model_config.get(
+                    "type", ""
+                )
+        except Exception:
+            loaded_type = ""
+        if normalize_model_type(loaded_type) != "florence2":
             return
 
         # Define which widgets are needed for each mode
@@ -1593,11 +1661,17 @@ class AutoLabelingWidget(QWidget):
 
     def update_remote_server_mode_ui(self):
         """Update remote server combobox with available models"""
-        if (
-            not self.model_manager.loaded_model_config
-            or self.model_manager.loaded_model_config.get("type")
-            != "remote_server"
-        ):
+        # NOTE: lenient normalized check for UI dispatch; backend keeps
+        # strict exact matching.
+        loaded_type = ""
+        try:
+            if self.model_manager.loaded_model_config:
+                loaded_type = self.model_manager.loaded_model_config.get(
+                    "type", ""
+                )
+        except Exception:
+            loaded_type = ""
+        if normalize_model_type(loaded_type) != "remoteserver":
             return
 
         available_models = self._filter_remote_server_available_models(
