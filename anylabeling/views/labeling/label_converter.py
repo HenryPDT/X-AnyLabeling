@@ -1475,9 +1475,9 @@ class LabelConverter:
         ET.SubElement(size, "height").text = str(image_height)
         ET.SubElement(size, "depth").text = str(image_depth)
         source = ET.SubElement(root, "source")
-        ET.SubElement(source, "database").text = (
-            "https://github.com/CVHub520/X-AnyLabeling"
-        )
+        ET.SubElement(
+            source, "database"
+        ).text = "https://github.com/CVHub520/X-AnyLabeling"
         for shape in shapes:
             label = shape["label"]
             points = self.clamp_points(
@@ -1519,8 +1519,8 @@ class LabelConverter:
                 ET.SubElement(bndbox, "ymax").text = str(int(ymax))
                 polygon = ET.SubElement(object_elem, "polygon")
                 for i, point in enumerate(points):
-                    x_tag = ET.SubElement(polygon, f"x{i+1}")
-                    y_tag = ET.SubElement(polygon, f"y{i+1}")
+                    x_tag = ET.SubElement(polygon, f"x{i + 1}")
+                    y_tag = ET.SubElement(polygon, f"y{i + 1}")
                     x_tag.text = str(point[0])
                     y_tag.text = str(point[1])
 

@@ -52,9 +52,7 @@ def test_download_with_retry_keeps_tls_certificate_verification(
     assert captured_contexts
 
 
-def test_download_with_retry_rejects_part_path_symlink(
-    tmp_path, monkeypatch
-):
+def test_download_with_retry_rejects_part_path_symlink(tmp_path, monkeypatch):
     model_directory = tmp_path / "models"
     model_directory.mkdir()
     outside_file = tmp_path / "outside.part"
@@ -86,18 +84,14 @@ def test_download_with_retry_rejects_part_path_symlink(
         "..",
     ],
 )
-def test_load_custom_model_rejects_invalid_name(
-    tmp_path, monkeypatch, name
-):
+def test_load_custom_model_rejects_invalid_name(tmp_path, monkeypatch, name):
     config_file = tmp_path / "model.yaml"
     config_file.write_text(
         f"type: yolov8\nname: {name!r}\ndisplay_name: Test\n",
         encoding="utf-8",
     )
     saved_configs = []
-    monkeypatch.setattr(
-        ModelManager, "load_model_configs", lambda self: None
-    )
+    monkeypatch.setattr(ModelManager, "load_model_configs", lambda self: None)
     monkeypatch.setattr(manager_module, "get_config", lambda: {})
     monkeypatch.setattr(manager_module, "save_config", saved_configs.append)
 
@@ -153,13 +147,13 @@ filter_classes:
     assert model_config["filter_classes"] == ["yes", "off"]
 
 
-def test_get_model_abs_path_rejects_path_traversal(
-    tmp_path, monkeypatch
-):
+def test_get_model_abs_path_rejects_path_traversal(tmp_path, monkeypatch):
     outside_file = tmp_path / "outside" / "model.onnx"
     outside_file.parent.mkdir()
     outside_file.write_bytes(b"keep")
-    monkeypatch.setattr(auto_model, "get_work_directory", lambda: str(tmp_path))
+    monkeypatch.setattr(
+        auto_model, "get_work_directory", lambda: str(tmp_path)
+    )
     monkeypatch.setattr(auto_model, "get_config", lambda: {})
     model = DummyModel({}, lambda _: None)
     download_called = False

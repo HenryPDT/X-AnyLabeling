@@ -492,9 +492,9 @@ class SearchableModelDropdownPopup(QWidget):
     def toggle_favorite(self, model_name, is_favorite):
         for provider, models in self.models_data.items():
             if model_name in models:
-                self.models_data[provider][model_name][
-                    "favorite"
-                ] = is_favorite
+                self.models_data[provider][model_name]["favorite"] = (
+                    is_favorite
+                )
                 break
 
         # Rebuild the entire list to reflect changes

@@ -269,190 +269,190 @@ def show_task_help(task_name):
     print(colored("Examples:", "green", attrs=["bold"]))
 
     if task_name == "yolo2xlabel":
-        print(f"  # Detection")
+        print("  # Detection")
         print(
-            f"  xanylabeling convert --task yolo2xlabel --mode detect --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task yolo2xlabel --mode detect --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Segmentation")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Segmentation")
         print(
-            f"  xanylabeling convert --task yolo2xlabel --mode segment --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task yolo2xlabel --mode segment --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # OBB (Oriented Bounding Box)")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # OBB (Oriented Bounding Box)")
         print(
-            f"  xanylabeling convert --task yolo2xlabel --mode obb --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task yolo2xlabel --mode obb --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Pose")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Pose")
         print(
-            f"  xanylabeling convert --task yolo2xlabel --mode pose --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task yolo2xlabel --mode pose --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --pose-cfg pose_config.yaml\n")
+        print("    --output ./output --pose-cfg pose_config.yaml\n")
 
     elif task_name == "xlabel2yolo":
-        print(f"  # Detection")
+        print("  # Detection")
         print(
-            f"  xanylabeling convert --task xlabel2yolo --mode detect --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2yolo --mode detect --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Segmentation (skip empty files)")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Segmentation (skip empty files)")
         print(
-            f"  xanylabeling convert --task xlabel2yolo --mode segment --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2yolo --mode segment --images ./images --labels ./labels \\"
         )
         print(
-            f"    --output ./output --classes classes.txt --skip-empty-files\n"
+            "    --output ./output --classes classes.txt --skip-empty-files\n"
         )
-        print(f"  # OBB")
+        print("  # OBB")
         print(
-            f"  xanylabeling convert --task xlabel2yolo --mode obb --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2yolo --mode obb --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Pose")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Pose")
         print(
-            f"  xanylabeling convert --task xlabel2yolo --mode pose --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2yolo --mode pose --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --pose-cfg pose_config.yaml\n")
+        print("    --output ./output --pose-cfg pose_config.yaml\n")
 
     elif task_name == "voc2xlabel":
-        print(f"  # Detection")
+        print("  # Detection")
         print(
-            f"  xanylabeling convert --task voc2xlabel --mode detect --labels ./Annotations --output ./output\n"
+            "  xanylabeling convert --task voc2xlabel --mode detect --labels ./Annotations --output ./output\n"
         )
-        print(f"  # Segmentation")
+        print("  # Segmentation")
         print(
-            f"  xanylabeling convert --task voc2xlabel --mode segment --labels ./Annotations --output ./output\n"
+            "  xanylabeling convert --task voc2xlabel --mode segment --labels ./Annotations --output ./output\n"
         )
 
     elif task_name == "xlabel2voc":
-        print(f"  # Detection")
+        print("  # Detection")
         print(
-            f"  xanylabeling convert --task xlabel2voc --mode detect --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2voc --mode detect --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output\n")
-        print(f"  # Segmentation (skip empty files)")
+        print("    --output ./output\n")
+        print("  # Segmentation (skip empty files)")
         print(
-            f"  xanylabeling convert --task xlabel2voc --mode segment --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2voc --mode segment --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --skip-empty-files\n")
+        print("    --output ./output --skip-empty-files\n")
 
     elif task_name == "coco2xlabel":
-        print(f"  # Detection")
+        print("  # Detection")
         print(
-            f"  xanylabeling convert --task coco2xlabel --mode detect --labels annotations.json \\"
+            "  xanylabeling convert --task coco2xlabel --mode detect --labels annotations.json \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Segmentation")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Segmentation")
         print(
-            f"  xanylabeling convert --task coco2xlabel --mode segment --labels annotations.json \\"
+            "  xanylabeling convert --task coco2xlabel --mode segment --labels annotations.json \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Pose")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Pose")
         print(
-            f"  xanylabeling convert --task coco2xlabel --mode pose --labels annotations.json \\"
+            "  xanylabeling convert --task coco2xlabel --mode pose --labels annotations.json \\"
         )
-        print(f"    --output ./output --pose-cfg pose_config.yaml\n")
+        print("    --output ./output --pose-cfg pose_config.yaml\n")
 
     elif task_name == "xlabel2coco":
-        print(f"  # Detection")
+        print("  # Detection")
         print(
-            f"  xanylabeling convert --task xlabel2coco --mode detect --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2coco --mode detect --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Segmentation")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Segmentation")
         print(
-            f"  xanylabeling convert --task xlabel2coco --mode segment --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2coco --mode segment --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
-        print(f"  # Pose")
+        print("    --output ./output --classes classes.txt\n")
+        print("  # Pose")
         print(
-            f"  xanylabeling convert --task xlabel2coco --mode pose --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2coco --mode pose --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --pose-cfg pose_config.yaml\n")
+        print("    --output ./output --pose-cfg pose_config.yaml\n")
 
     elif task_name == "dota2xlabel":
         print(
-            f"  xanylabeling convert --task dota2xlabel --images ./images --labels ./labels --output ./output\n"
+            "  xanylabeling convert --task dota2xlabel --images ./images --labels ./labels --output ./output\n"
         )
 
     elif task_name == "xlabel2dota":
         print(
-            f"  xanylabeling convert --task xlabel2dota --images ./images --labels ./labels --output ./output\n"
+            "  xanylabeling convert --task xlabel2dota --images ./images --labels ./labels --output ./output\n"
         )
 
     elif task_name == "mask2xlabel":
         print(
-            f"  xanylabeling convert --task mask2xlabel --images ./images --labels ./masks \\"
+            "  xanylabeling convert --task mask2xlabel --images ./images --labels ./masks \\"
         )
-        print(f"    --output ./output --mapping mapping.json\n")
+        print("    --output ./output --mapping mapping.json\n")
 
     elif task_name == "xlabel2mask":
         print(
-            f"  xanylabeling convert --task xlabel2mask --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2mask --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --mapping mapping.json\n")
+        print("    --output ./output --mapping mapping.json\n")
 
     elif task_name == "mot2xlabel":
         print(
-            f"  xanylabeling convert --task mot2xlabel --labels gt.txt --images ./frames \\"
+            "  xanylabeling convert --task mot2xlabel --labels gt.txt --images ./frames \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
+        print("    --output ./output --classes classes.txt\n")
 
     elif task_name == "xlabel2mot":
         print(
-            f"  xanylabeling convert --task xlabel2mot --labels ./labels --output ./output --classes classes.txt\n"
+            "  xanylabeling convert --task xlabel2mot --labels ./labels --output ./output --classes classes.txt\n"
         )
 
     elif task_name == "xlabel2mots":
         print(
-            f"  xanylabeling convert --task xlabel2mots --labels ./labels --output ./output --classes classes.txt\n"
+            "  xanylabeling convert --task xlabel2mots --labels ./labels --output ./output --classes classes.txt\n"
         )
 
     elif task_name == "ppocr2xlabel":
-        print(f"  # Recognition")
+        print("  # Recognition")
         print(
-            f"  xanylabeling convert --task ppocr2xlabel --labels Label.txt --images ./images \\"
+            "  xanylabeling convert --task ppocr2xlabel --labels Label.txt --images ./images \\"
         )
-        print(f"    --output ./output --mode rec\n")
-        print(f"  # Key Information Extraction")
+        print("    --output ./output --mode rec\n")
+        print("  # Key Information Extraction")
         print(
-            f"  xanylabeling convert --task ppocr2xlabel --labels Label.txt --images ./images \\"
+            "  xanylabeling convert --task ppocr2xlabel --labels Label.txt --images ./images \\"
         )
-        print(f"    --output ./output --mode kie\n")
+        print("    --output ./output --mode kie\n")
 
     elif task_name == "xlabel2ppocr":
-        print(f"  # Recognition")
+        print("  # Recognition")
         print(
-            f"  xanylabeling convert --task xlabel2ppocr --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2ppocr --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --mode rec\n")
-        print(f"  # Key Information Extraction")
+        print("    --output ./output --mode rec\n")
+        print("  # Key Information Extraction")
         print(
-            f"  xanylabeling convert --task xlabel2ppocr --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2ppocr --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --mode kie\n")
+        print("    --output ./output --mode kie\n")
 
     elif task_name == "odvg2xlabel":
         print(
-            f"  xanylabeling convert --task odvg2xlabel --labels annotations.jsonl --output ./output\n"
+            "  xanylabeling convert --task odvg2xlabel --labels annotations.jsonl --output ./output\n"
         )
 
     elif task_name == "xlabel2odvg":
         print(
-            f"  xanylabeling convert --task xlabel2odvg --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2odvg --images ./images --labels ./labels \\"
         )
-        print(f"    --output ./output --classes classes.txt\n")
+        print("    --output ./output --classes classes.txt\n")
 
     elif task_name == "vlmr12xlabel":
         print(
-            f"  xanylabeling convert --task vlmr12xlabel --images ./images --labels ./labels --output ./output\n"
+            "  xanylabeling convert --task vlmr12xlabel --images ./images --labels ./labels --output ./output\n"
         )
 
     elif task_name == "xlabel2vlmr1":
         print(
-            f"  xanylabeling convert --task xlabel2vlmr1 --images ./images --labels ./labels \\"
+            "  xanylabeling convert --task xlabel2vlmr1 --images ./images --labels ./labels \\"
         )
-        print(f"    --output output.jsonl\n")
+        print("    --output output.jsonl\n")
 
     print(colored("=" * 80 + "\n", "cyan"))
 

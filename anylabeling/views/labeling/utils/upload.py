@@ -321,7 +321,7 @@ def upload_ppocr_annotation(self, mode):
             _refresh_after_annotation_upload(self)
 
             popup = Popup(
-                self.tr(f"Uploading annotations successfully!"),
+                self.tr("Uploading annotations successfully!"),
                 self,
                 icon=new_icon_path("copy-green", "svg"),
             )
@@ -401,7 +401,7 @@ def upload_odvg_annotation(self):
             _refresh_after_annotation_upload(self)
 
             popup = Popup(
-                self.tr(f"Uploading annotations successfully!"),
+                self.tr("Uploading annotations successfully!"),
                 self,
                 icon=new_icon_path("copy-green", "svg"),
             )
@@ -767,7 +767,7 @@ def upload_mot_annotation(self, LABEL_OPACITY):
             _refresh_after_annotation_upload(self)
 
             popup = Popup(
-                self.tr(f"Uploading annotations successfully!"),
+                self.tr("Uploading annotations successfully!"),
                 self,
                 icon=new_icon_path("copy-green", "svg"),
             )
@@ -1187,7 +1187,7 @@ def upload_coco_annotation(self, mode):
             _refresh_after_annotation_upload(self)
 
             popup = Popup(
-                self.tr(f"Uploading annotations successfully!"),
+                self.tr("Uploading annotations successfully!"),
                 self,
                 icon=new_icon_path("copy-green", "svg"),
             )
@@ -2104,7 +2104,7 @@ def upload_shape_attrs_file(self, LABEL_OPACITY):
         self.canvas.h_shape_is_hovered = False
 
         popup = Popup(
-            self.tr(f"Uploading shape attributes file successfully!"),
+            self.tr("Uploading shape attributes file successfully!"),
             self,
             icon=new_icon_path("copy-green", "svg"),
         )
@@ -2152,7 +2152,7 @@ def upload_label_flags_file(self, LABEL_OPACITY):
         self.label_dialog.upload_flags(self.label_flags)
 
         popup = Popup(
-            self.tr(f"Uploading flags file successfully!"),
+            self.tr("Uploading flags file successfully!"),
             self,
             icon=new_icon_path("copy-green", "svg"),
         )
@@ -2191,7 +2191,7 @@ def upload_image_flags_file(self):
         self.load_file(self.filename)
 
         popup = Popup(
-            self.tr(f"Uploading flags file successfully!"),
+            self.tr("Uploading flags file successfully!"),
             self,
             icon=new_icon_path("copy-green", "svg"),
         )

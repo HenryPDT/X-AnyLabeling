@@ -283,8 +283,8 @@ def test_external_export_reuses_export_button_for_stop_action():
         append_training_log=logs.append,
         tr=lambda text: text,
     )
-    dialog.reset_export_button = lambda: (
-        UltralyticsDialog.reset_export_button(dialog)
+    dialog.reset_export_button = lambda: UltralyticsDialog.reset_export_button(
+        dialog
     )
 
     UltralyticsDialog.on_export_event(dialog, "export_started", {})
@@ -342,8 +342,8 @@ def test_onnx_export_completion_keeps_dialog_open_for_apply():
         append_training_log=logs.append,
         tr=lambda text: text,
     )
-    dialog.reset_export_button = lambda: (
-        UltralyticsDialog.reset_export_button(dialog)
+    dialog.reset_export_button = lambda: UltralyticsDialog.reset_export_button(
+        dialog
     )
 
     UltralyticsDialog.on_export_event(
@@ -368,8 +368,9 @@ def test_apply_exported_model_loads_config_and_returns_to_main_panel(
         accept=lambda: actions.append("export_dialog_closed")
     )
     auto_labeling_widget = SimpleNamespace(
-        load_custom_model_config=lambda path: actions.append(("load", path))
-        or True,
+        load_custom_model_config=lambda path: (
+            actions.append(("load", path)) or True
+        ),
         isVisible=lambda: False,
     )
     parent = SimpleNamespace(

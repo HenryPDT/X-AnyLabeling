@@ -143,7 +143,7 @@ class COCOVisualizer:
 
     def addtgt(self, tgt):
         """ """
-        if tgt is None or not "boxes" in tgt:
+        if tgt is None or "boxes" not in tgt:
             ax = plt.gca()
 
             if "caption" in tgt:
@@ -183,9 +183,9 @@ class COCOVisualizer:
         ax.add_collection(p)
 
         if "strings_positive" in tgt and len(tgt["strings_positive"]) > 0:
-            assert (
-                len(tgt["strings_positive"]) == numbox
-            ), f"{len(tgt['strings_positive'])} = {numbox}, "
+            assert len(tgt["strings_positive"]) == numbox, (
+                f"{len(tgt['strings_positive'])} = {numbox}, "
+            )
             for idx, strlist in enumerate(tgt["strings_positive"]):
                 cate_id = int(tgt["labels"][idx])
                 _string = str(cate_id) + ":" + " ".join(strlist)
@@ -200,9 +200,9 @@ class COCOVisualizer:
                 )
 
         if "box_label" in tgt:
-            assert (
-                len(tgt["box_label"]) == numbox
-            ), f"{len(tgt['box_label'])} = {numbox}, "
+            assert len(tgt["box_label"]) == numbox, (
+                f"{len(tgt['box_label'])} = {numbox}, "
+            )
             for idx, bl in enumerate(tgt["box_label"]):
                 _string = str(bl)
                 bbox_x, bbox_y, bbox_w, bbox_h = boxes[idx]

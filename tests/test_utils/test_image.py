@@ -11,7 +11,6 @@ from anylabeling.views.labeling.utils.image import (
 
 
 class TestImageUtils(unittest.TestCase):
-
     def test_supported_image_extensions_include_heif_variants(self):
         extensions = get_supported_image_extensions()
 
@@ -28,9 +27,7 @@ class TestImageUtils(unittest.TestCase):
                 "anylabeling.views.labeling.utils.image.img_data_to_pil",
                 return_value=Image.new("RGB", (2, 3), "white"),
             ):
-                image = img_data_to_qimage(
-                    b"not-a-qt-image", "sample.heic"
-                )
+                image = img_data_to_qimage(b"not-a-qt-image", "sample.heic")
 
         self.assertFalse(image.isNull())
         self.assertEqual((image.width(), image.height()), (2, 3))
@@ -44,9 +41,7 @@ class TestImageUtils(unittest.TestCase):
             with mock.patch(
                 "anylabeling.views.labeling.utils.image.img_data_to_pil"
             ) as mocked_img_data_to_pil:
-                image = img_data_to_qimage(
-                    b"not-a-qt-image", "sample.jpg"
-                )
+                image = img_data_to_qimage(b"not-a-qt-image", "sample.jpg")
 
         self.assertTrue(image.isNull())
         mocked_img_data_to_pil.assert_not_called()

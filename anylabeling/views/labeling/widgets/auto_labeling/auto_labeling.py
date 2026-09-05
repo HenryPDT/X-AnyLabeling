@@ -140,8 +140,8 @@ class AutoLabelingWidget(QWidget):
         self.model_manager.model_loaded.connect(self.update_visible_widgets)
         self.model_manager.model_loaded.connect(self.on_new_model_loaded)
         self.model_manager.new_auto_labeling_result.connect(
-            lambda auto_labeling_result: self.parent.new_shapes_from_auto_labeling(
-                auto_labeling_result
+            lambda auto_labeling_result: (
+                self.parent.new_shapes_from_auto_labeling(auto_labeling_result)
             )
         )
         self.model_manager.auto_segmentation_model_selected.connect(

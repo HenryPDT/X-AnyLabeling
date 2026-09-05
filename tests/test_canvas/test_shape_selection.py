@@ -19,7 +19,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for canvas shape selection tests"
 )
 class TestCanvasShapeSelection(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:

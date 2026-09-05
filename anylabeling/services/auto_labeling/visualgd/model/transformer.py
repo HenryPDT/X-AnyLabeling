@@ -635,7 +635,9 @@ class TransformerEncoder(nn.Module):
                     )
 
             if self.text_layers:
-                memory_text = self.text_layers[layer_id](
+                memory_text = self.text_layers[
+                    layer_id
+                ](
                     src=memory_text.transpose(0, 1),
                     src_mask=~text_self_attention_masks,  # note we use ~ for mask here
                     src_key_padding_mask=text_attention_mask,

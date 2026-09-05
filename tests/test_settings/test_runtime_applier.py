@@ -20,7 +20,6 @@ except Exception:
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for runtime tests")
 class TestSettingsRuntimeApplier(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
@@ -128,7 +127,6 @@ class TestSettingsRuntimeApplier(unittest.TestCase):
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for runtime tests")
 class TestMagicWandSettingsRuntimeApplier(unittest.TestCase):
-
     def test_magic_wand_settings_apply_without_restart(self):
         canvas = SimpleNamespace(
             magic_wand_luminance_weight=0.5,

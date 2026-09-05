@@ -498,9 +498,9 @@ class ModelDropdown(QWidget):
         current_provider = None
         for provider, models in self.models_data.items():
             if model_name in models:
-                self.models_data[provider][model_name][
-                    "favorite"
-                ] = is_favorite
+                self.models_data[provider][model_name]["favorite"] = (
+                    is_favorite
+                )
                 current_provider = provider
                 break
 

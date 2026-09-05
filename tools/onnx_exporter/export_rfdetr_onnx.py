@@ -259,7 +259,7 @@ def main():
         cv2.imshow("image", im0)
         cv2.waitKey(0)
 
-    except Exception as e:
+    except Exception:
         if not os.path.exists(os.path.dirname(save_path)):
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
         cv2.imwrite(save_path, im0)

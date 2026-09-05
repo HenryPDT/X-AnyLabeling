@@ -392,6 +392,7 @@ Check if label names are purely numeric. All purely numeric label names must be 
 You can downgrade the IR version of the ONNX model using Python:
 ```python
 import onnx
+
 onnx_model = onnx.load("/path/to/your/onnx_model")
 onnx_model.ir_version = 10
 onnx.save(onnx_model, "/path/to/onnx_model")

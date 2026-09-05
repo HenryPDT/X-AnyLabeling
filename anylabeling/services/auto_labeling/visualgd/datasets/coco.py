@@ -7,7 +7,8 @@ Mostly copy-paste from https://github.com/pytorch/vision/blob/13b35ff/references
 
 if __name__ == "__main__":
     # for debug only
-    import os, sys
+    import os
+    import sys
 
     sys.path.append(os.path.dirname(sys.path[0]))
 from torchvision.datasets.vision import VisionDataset

@@ -211,9 +211,10 @@ class YOLOv5OBB(Model):
                 new_shape[1] / old_shape[1],
             )
             # wh padding
-            pad = (new_shape[1] - old_shape[1] * gain) / 2, (
-                new_shape[0] - old_shape[0] * gain
-            ) / 2
+            pad = (
+                (new_shape[1] - old_shape[1] * gain) / 2,
+                (new_shape[0] - old_shape[0] * gain) / 2,
+            )
         else:
             gain = ratio_pad[0][0]  # h_ratios
             pad = ratio_pad[1]  # wh_paddings

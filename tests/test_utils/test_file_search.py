@@ -9,7 +9,9 @@ MODULE_PATH = (
     Path(__file__).resolve().parents[2]
     / "anylabeling/views/labeling/utils/file_search.py"
 )
-SPEC = importlib.util.spec_from_file_location("file_search_module", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location(
+    "file_search_module", MODULE_PATH
+)
 FILE_SEARCH_MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FILE_SEARCH_MODULE)
 
@@ -18,7 +20,6 @@ parse_search_pattern = FILE_SEARCH_MODULE.parse_search_pattern
 
 
 class TestFileSearch(unittest.TestCase):
-
     @staticmethod
     def _write_label(path, shapes):
         with open(path, "w", encoding="utf-8") as f:

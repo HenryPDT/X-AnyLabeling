@@ -205,9 +205,9 @@ class GroundingDINO(nn.Module):
                 in_channels = hidden_dim
             self.input_proj = nn.ModuleList(input_proj_list)
         else:
-            assert (
-                two_stage_type == "no"
-            ), "two_stage_type should be no if num_feature_levels=1 !!!"
+            assert two_stage_type == "no", (
+                "two_stage_type should be no if num_feature_levels=1 !!!"
+            )
             self.input_proj = nn.ModuleList(
                 [
                     nn.Sequential(
@@ -1017,7 +1017,7 @@ class SetCriterion(nn.Module):
                 l_dict = self.get_loss(
                     loss, interm_outputs, targets, indices, num_boxes, **kwargs
                 )
-                l_dict = {k + f"_interm": v for k, v in l_dict.items()}
+                l_dict = {k + "_interm": v for k, v in l_dict.items()}
                 losses.update(l_dict)
 
         if return_indices:
@@ -1291,7 +1291,7 @@ def build_groundingdino(args):
             interm_loss_coef = 1.0
         interm_weight_dict.update(
             {
-                k + f"_interm": v * interm_loss_coef * _coeff_weight_dict[k]
+                k + "_interm": v * interm_loss_coef * _coeff_weight_dict[k]
                 for k, v in clean_weight_dict_wo_dn.items()
             }
         )

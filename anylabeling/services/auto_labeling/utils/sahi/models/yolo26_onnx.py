@@ -104,9 +104,9 @@ class Yolo26OnnxDetectionModel(DetectionModel):
                 Inference input size.
         """
 
-        assert (
-            self.model is not None
-        ), "Model is not loaded, load it by calling .load_model()"
+        assert self.model is not None, (
+            "Model is not loaded, load it by calling .load_model()"
+        )
 
         prediction_result = self.model.inference(image)
 

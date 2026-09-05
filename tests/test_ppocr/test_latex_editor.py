@@ -33,7 +33,6 @@ except Exception:
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for PPOCR LaTeX tests")
 class TestPPOCRLatexEditor(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:

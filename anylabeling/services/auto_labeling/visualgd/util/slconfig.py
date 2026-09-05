@@ -39,8 +39,7 @@ class ConfigDict(Dict):
             value = super(ConfigDict, self).__getattr__(name)
         except KeyError:
             ex = AttributeError(
-                f"'{self.__class__.__name__}' object has no "
-                f"attribute '{name}'"
+                f"'{self.__class__.__name__}' object has no attribute '{name}'"
             )
         except Exception as e:
             ex = e
@@ -82,7 +81,7 @@ class SLConfig(object):
             ast.parse(content)
         except SyntaxError:
             raise SyntaxError(
-                "There are syntax errors in config " f"file {filename}"
+                f"There are syntax errors in config file {filename}"
             )
 
     @staticmethod
@@ -214,7 +213,7 @@ class SLConfig(object):
             cfg_dict = dict()
         elif not isinstance(cfg_dict, dict):
             raise TypeError(
-                "cfg_dict must be a dict, but " f"got {type(cfg_dict)}"
+                f"cfg_dict must be a dict, but got {type(cfg_dict)}"
             )
         for key in cfg_dict:
             if key in RESERVED_KEYS:

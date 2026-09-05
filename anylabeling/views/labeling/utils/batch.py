@@ -46,7 +46,9 @@ class BatchRangeDialog(QDialog):
         self.setWindowTitle(self.tr("Auto Run"))
         self.setMinimumWidth(440)
         theme = get_theme()
-        self.setStyleSheet(get_dialog_style() + f"""
+        self.setStyleSheet(
+            get_dialog_style()
+            + f"""
             QLabel#rangeTitle {{ font-size: 18px; font-weight: 600; }}
             QLabel#rangeHint, QLabel#rangeSummary {{
                 color: {theme["text_secondary"]};
@@ -68,7 +70,8 @@ class BatchRangeDialog(QDialog):
             QPushButton#runButton:pressed {{
                 background-color: {theme["primary_pressed"]};
             }}
-            """)
+            """
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)

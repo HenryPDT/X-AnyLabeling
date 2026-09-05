@@ -17,7 +17,6 @@ except Exception:
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for Qt utility tests")
 class TestQtUtils(unittest.TestCase):
-
     def test_distance_to_line_handles_2d_points_without_numpy_warning(self):
         point = QtCore.QPointF(5.0, 5.0)
         line = [QtCore.QPointF(0.0, 0.0), QtCore.QPointF(10.0, 0.0)]

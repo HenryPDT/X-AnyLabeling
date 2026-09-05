@@ -959,7 +959,8 @@ class TextSystem(object):
         for bno in range(bbox_num):
             cv2.imwrite(
                 os.path.join(
-                    output_dir, f"mg_crop_{bno+self.crop_image_res_index}.jpg"
+                    output_dir,
+                    f"mg_crop_{bno + self.crop_image_res_index}.jpg",
                 ),
                 img_crop_list[bno],
             )
@@ -1113,9 +1114,9 @@ def create_operators(op_param_list, global_config=None):
     assert isinstance(op_param_list, list), "operator config should be a list"
     ops = []
     for operator in op_param_list:
-        assert (
-            isinstance(operator, dict) and len(operator) == 1
-        ), "yaml format error"
+        assert isinstance(operator, dict) and len(operator) == 1, (
+            "yaml format error"
+        )
         op_name = list(operator)[0]
         param = {} if operator[op_name] is None else operator[op_name]
         if global_config is not None:

@@ -511,8 +511,7 @@ class EditLabelDialog(QDialog):
 
     def get_edit_info(self):
         return {
-            self.table_widget.item(i, 0)
-            .text(): self.table_widget.item(i, 1)
+            self.table_widget.item(i, 0).text(): self.table_widget.item(i, 1)
             .text()
             .strip()
             for i in range(self.table_widget.rowCount())

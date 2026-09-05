@@ -24,7 +24,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for canvas adjustment tests"
 )
 class TestCanvasAdjustmentWidget(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
@@ -97,7 +96,6 @@ class TestCanvasAdjustmentWidget(unittest.TestCase):
     PYQT_AVAILABLE, "PyQt6 is required for brightness/contrast tests"
 )
 class TestBrightnessContrastProcessor(unittest.TestCase):
-
     def test_adjusts_16_bit_grayscale_image(self):
         for brightness, contrast in ((60, 50), (50, 60)):
             with self.subTest(brightness=brightness, contrast=contrast):

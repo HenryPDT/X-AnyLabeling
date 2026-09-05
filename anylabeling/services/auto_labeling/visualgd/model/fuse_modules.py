@@ -110,9 +110,9 @@ class BiMultiHeadAttention(nn.Module):
         self.v_dim = v_dim
         self.l_dim = l_dim
 
-        assert (
-            self.head_dim * self.num_heads == self.embed_dim
-        ), f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`: {self.num_heads})."
+        assert self.head_dim * self.num_heads == self.embed_dim, (
+            f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`: {self.num_heads})."
+        )
         self.scale = self.head_dim ** (-0.5)
         self.dropout = dropout
 

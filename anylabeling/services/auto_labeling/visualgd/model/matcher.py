@@ -15,7 +15,8 @@
 # ------------------------------------------------------------------------
 
 
-import torch, os
+import torch
+import os
 from torch import nn
 from scipy.optimize import linear_sum_assignment
 
@@ -46,9 +47,9 @@ class HungarianMatcher(nn.Module):
         self.cost_class = cost_class
         self.cost_bbox = cost_bbox
         self.cost_giou = cost_giou
-        assert (
-            cost_class != 0 or cost_bbox != 0 or cost_giou != 0
-        ), "all costs cant be 0"
+        assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0, (
+            "all costs cant be 0"
+        )
 
         self.focal_alpha = focal_alpha
 
@@ -176,9 +177,9 @@ class SimpleMinsumMatcher(nn.Module):
         self.cost_class = cost_class
         self.cost_bbox = cost_bbox
         self.cost_giou = cost_giou
-        assert (
-            cost_class != 0 or cost_bbox != 0 or cost_giou != 0
-        ), "all costs cant be 0"
+        assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0, (
+            "all costs cant be 0"
+        )
 
         self.focal_alpha = focal_alpha
 

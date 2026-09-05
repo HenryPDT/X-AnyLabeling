@@ -649,9 +649,9 @@ class ChatMessage(QFrame):
                 if hasattr(
                     dialog, "chat_history"
                 ) and 0 <= message_index < len(dialog.chat_history):
-                    dialog.chat_history[message_index][
-                        "content"
-                    ] = edited_content
+                    dialog.chat_history[message_index]["content"] = (
+                        edited_content
+                    )
 
                     # If this is a file-based chat, update the stored data
                     if (

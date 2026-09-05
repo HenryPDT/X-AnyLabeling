@@ -64,7 +64,7 @@ class ExportFormatDialog(QDialog):
             )
         )
         info_label.setStyleSheet(f"""
-            color: {t['warning']};
+            color: {t["warning"]};
             font-size: 12px;
             margin-top: 8px;
             padding: 4px;

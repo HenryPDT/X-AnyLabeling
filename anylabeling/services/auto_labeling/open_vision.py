@@ -86,7 +86,7 @@ class OpenVision(Model):
             raise FileNotFoundError(
                 QCoreApplication.translate(
                     "Model",
-                    f"Could not download or initialize model.",
+                    "Could not download or initialize model.",
                 )
             )
 

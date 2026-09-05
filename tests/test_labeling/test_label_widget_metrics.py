@@ -16,7 +16,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for label widget metrics tests"
 )
 class TestLabelWidgetMetrics(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:

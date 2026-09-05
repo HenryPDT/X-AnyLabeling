@@ -624,12 +624,8 @@ class CocoImage:
         self.file_name = file_name
         self.height = int(height)
         self.width = int(width)
-        self.annotations = (
-            []
-        )  # list of CocoAnnotation that belong to this image
-        self.predictions = (
-            []
-        )  # list of CocoPrediction that belong to this image
+        self.annotations = []  # list of CocoAnnotation that belong to this image
+        self.predictions = []  # list of CocoPrediction that belong to this image
 
     def add_annotation(self, annotation):
         """
@@ -1762,9 +1758,7 @@ def export_yolov5_images_and_txts_from_coco_object(
         disable_symlink: bool
             If True, symlinks are not created. Instead images are copied.
     """
-    logger.info(
-        "generating image symlinks and annotation files for yolov5..."
-    ),
+    logger.info("generating image symlinks and annotation files for yolov5...")
     # symlink is not supported in colab
     if is_colab() and not disable_symlink:
         logger.warning("symlink is not supported in colab, disabling it...")

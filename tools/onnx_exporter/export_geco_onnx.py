@@ -213,7 +213,7 @@ class GeCo:
 def export_onnx(model, output_encoder_file, output_decoder_file, is_quantize):
     # export encoder
     tmp_dir = mkdtemp()
-    tmp_model_path = os.path.join(tmp_dir, f"encoder.onnx")
+    tmp_model_path = os.path.join(tmp_dir, "encoder.onnx")
 
     with torch.no_grad():
         torch.onnx.export(
@@ -251,7 +251,9 @@ def export_onnx(model, output_encoder_file, output_decoder_file, is_quantize):
             1,
             14,
             0,
-        ), f"The onnx version must be large equal than '1.14.0', but got {onnx_version}"
+        ), (
+            f"The onnx version must be large equal than '1.14.0', but got {onnx_version}"
+        )
 
         model_output = osp.splitext(output_encoder_file)[0] + "_quant.onnx"
         print(f"Quantizing model and writing to {output_encoder_file}...")

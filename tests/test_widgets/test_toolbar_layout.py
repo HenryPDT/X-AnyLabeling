@@ -18,7 +18,6 @@ except Exception:
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for toolbar tests")
 class TestToolBarLayout(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
@@ -52,7 +51,9 @@ class TestToolBarLayout(unittest.TestCase):
 
         button = toolbar.widgetForAction(action)
         self.assertIsNotNone(button)
-        self.assertGreaterEqual(button.height(), toolbar.iconSize().height() + 4)
+        self.assertGreaterEqual(
+            button.height(), toolbar.iconSize().height() + 4
+        )
         self.assertGreater(button.geometry().top(), 0)
         self.assertGreaterEqual(button.geometry().left(), 0)
         self.assertLessEqual(button.geometry().right(), toolbar.width())

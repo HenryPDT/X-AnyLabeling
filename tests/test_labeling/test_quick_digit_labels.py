@@ -27,7 +27,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for quick digit label tests"
 )
 class TestQuickDigitLabels(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         cls.app = QtWidgets.QApplication.instance()
@@ -68,33 +67,29 @@ class TestQuickDigitLabels(unittest.TestCase):
                 widget.unique_label_list.set_item_label(item, lbl)
 
         # get_project_classes
-        widget.get_project_classes = (
-            lambda: LabelingWidget.get_project_classes(widget)
+        widget.get_project_classes = lambda: (
+            LabelingWidget.get_project_classes(widget)
         )
-        widget._get_target_label_for_digit = (
-            lambda digit: LabelingWidget._get_target_label_for_digit(
-                widget, digit
-            )
+        widget._get_target_label_for_digit = lambda digit: (
+            LabelingWidget._get_target_label_for_digit(widget, digit)
         )
-        widget._select_unique_label_item = (
-            lambda lbl: LabelingWidget._select_unique_label_item(widget, lbl)
+        widget._select_unique_label_item = lambda lbl: (
+            LabelingWidget._select_unique_label_item(widget, lbl)
         )
-        widget.assign_label_to_shapes = (
-            lambda shapes, lbl: LabelingWidget.assign_label_to_shapes(
-                widget, shapes, lbl
-            )
+        widget.assign_label_to_shapes = lambda shapes, lbl: (
+            LabelingWidget.assign_label_to_shapes(widget, shapes, lbl)
         )
-        widget.handle_digit_shortcut = (
-            lambda digit: LabelingWidget.handle_digit_shortcut(widget, digit)
+        widget.handle_digit_shortcut = lambda digit: (
+            LabelingWidget.handle_digit_shortcut(widget, digit)
         )
-        widget.create_digit_mode = (
-            lambda digit: LabelingWidget.create_digit_mode(widget, digit)
+        widget.create_digit_mode = lambda digit: (
+            LabelingWidget.create_digit_mode(widget, digit)
         )
-        widget.update_crosshair_color = (
-            lambda lbl=None: LabelingWidget.update_crosshair_color(widget, lbl)
+        widget.update_crosshair_color = lambda lbl=None: (
+            LabelingWidget.update_crosshair_color(widget, lbl)
         )
-        widget.on_unique_label_selection_changed = (
-            lambda: LabelingWidget.on_unique_label_selection_changed(widget)
+        widget.on_unique_label_selection_changed = lambda: (
+            LabelingWidget.on_unique_label_selection_changed(widget)
         )
         widget._update_shape_color = Mock()
         color_map = {

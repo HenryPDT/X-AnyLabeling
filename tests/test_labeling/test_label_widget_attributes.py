@@ -21,7 +21,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for label widget attribute tests"
 )
 class TestLabelWidgetAttributes(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         cls.app = QtWidgets.QApplication.instance()
@@ -103,9 +102,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
         self.assertEqual(saved_shape["custom"], "value")
 
     def test_update_attributes_does_not_save_unchanged_shape(self):
-        shape = SimpleNamespace(
-            label="car", attributes={"color": "red"}
-        )
+        shape = SimpleNamespace(label="car", attributes={"color": "red"})
         widget = SimpleNamespace(
             canvas=SimpleNamespace(shapes=[shape]),
             attributes={"car": {"color": ["red", "blue"]}},
@@ -146,9 +143,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
             ),
             current_item=Mock(return_value=item),
             label_dialog=SimpleNamespace(
-                pop_up=Mock(
-                    return_value=("car", {}, None, "new", False, [])
-                ),
+                pop_up=Mock(return_value=("car", {}, None, "new", False, [])),
                 add_label_history=Mock(),
             ),
             _config={"move_mode": "auto"},
@@ -196,9 +191,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
         widget = SimpleNamespace(
             _batch_edit_warning_shown=True,
             label_dialog=SimpleNamespace(
-                pop_up=Mock(
-                    return_value=("car", {}, None, "new", False, [])
-                ),
+                pop_up=Mock(return_value=("car", {}, None, "new", False, [])),
                 add_label_history=Mock(),
             ),
             validate_label=Mock(return_value=True),
@@ -233,9 +226,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
         widget = SimpleNamespace(
             canvas=SimpleNamespace(shapes=[shape]),
             attributes={"car": {"visibility": options}},
-            attribute_widget_types={
-                "car": {"visibility": "radiobutton"}
-            },
+            attribute_widget_types={"car": {"visibility": "radiobutton"}},
             scroll_area=scroll_area,
             attribute_radio_changed=Mock(),
             save_attributes=Mock(),
@@ -303,9 +294,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
                     widget,
                     0,
                     "vehicle_id",
-                    SimpleNamespace(
-                        text=Mock(return_value="vehicle-001")
-                    ),
+                    SimpleNamespace(text=Mock(return_value="vehicle-001")),
                 ),
             ),
             (
@@ -322,9 +311,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
             with self.subTest(widget_type=widget_type):
                 shape = SimpleNamespace(attributes={})
                 canvas = SimpleNamespace(shapes=[shape], update=Mock())
-                widget = SimpleNamespace(
-                    canvas=canvas, save_attributes=Mock()
-                )
+                widget = SimpleNamespace(canvas=canvas, save_attributes=Mock())
 
                 change(widget)
 
@@ -370,9 +357,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
                     tr=lambda text: text,
                     canvas=canvas,
                     attributes={"car": {"value": configured_options}},
-                    attribute_widget_types={
-                        "car": {"value": widget_type}
-                    },
+                    attribute_widget_types={"car": {"value": widget_type}},
                     scroll_area=scroll_area,
                     attribute_selection_changed=Mock(),
                     attribute_radio_changed=Mock(),
@@ -393,9 +378,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
                         if button.isChecked()
                     ]
                     self.assertEqual(len(checked_buttons), 1)
-                    self.assertEqual(
-                        checked_buttons[0].text(), stored_value
-                    )
+                    self.assertEqual(checked_buttons[0].text(), stored_value)
                     self.assertTrue(checked_buttons[0].toolTip())
                 else:
                     combo = widget.grid_layout_container.findChild(
@@ -434,9 +417,7 @@ class TestLabelWidgetAttributes(unittest.TestCase):
         self.assertTrue(combo.toolTip())
 
         combo.setCurrentIndex(0)
-        LabelingWidget.attribute_selection_changed(
-            widget, 0, "color", combo
-        )
+        LabelingWidget.attribute_selection_changed(widget, 0, "color", combo)
 
         self.assertEqual(shape.attributes["color"], "red")
         self.assertEqual(combo.toolTip(), "")

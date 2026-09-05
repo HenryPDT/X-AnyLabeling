@@ -223,7 +223,9 @@ def export_onnx(onnx_file, is_quantize):
             1,
             14,
             0,
-        ), f"The onnx version must be large equal than '1.14.0', but got {onnx_version}"
+        ), (
+            f"The onnx version must be large equal than '1.14.0', but got {onnx_version}"
+        )
         print(f"Quantizing model and writing to {model_output}...")
         quantize_dynamic(
             model_input=onnx_file,

@@ -18,9 +18,10 @@ except Exception:
     PYQT_AVAILABLE = False
 
 
-@unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for cuboid interaction tests")
+@unittest.skipUnless(
+    PYQT_AVAILABLE, "PyQt6 is required for cuboid interaction tests"
+)
 class TestCuboidInteraction(unittest.TestCase):
-
     def setUp(self):
         self.canvas = Canvas.__new__(Canvas)
         self.canvas.cuboid_default_depth_vector = [24.0, -24.0]
@@ -101,7 +102,9 @@ class TestCuboidInteraction(unittest.TestCase):
         self.canvas.move_cuboid_face_by(
             shape, CUBOID_FACE_RIGHT, QtCore.QPointF(8.0, 0.0)
         )
-        self.assertGreater(abs(shape.points[1].x() - shape.points[0].x()), old_width)
+        self.assertGreater(
+            abs(shape.points[1].x() - shape.points[0].x()), old_width
+        )
         self.assertAlmostEqual(
             shape.get_cuboid_depth_vector()[0], old_depth[0], places=5
         )
@@ -117,7 +120,9 @@ class TestCuboidInteraction(unittest.TestCase):
         self.assertAlmostEqual(new_depth[1], old_depth[1] - 3.0, places=5)
         self.assert_depth_parallel(shape)
 
-    def test_left_face_drag_moves_in_xy_and_respects_back_right_constraint(self):
+    def test_left_face_drag_moves_in_xy_and_respects_back_right_constraint(
+        self,
+    ):
         shape = self.create_cuboid_shape(depth_x=30.0, depth_y=-10.0)
         margin = self.canvas.cuboid_constraint_margin()
         left_indices = [0, 3, 4, 7]
@@ -132,7 +137,8 @@ class TestCuboidInteraction(unittest.TestCase):
         right_limit = (
             min(
                 shape.points[right_top].x(),
-                (shape.points[right_top].x() + shape.points[right_bottom].x()) / 2.0,
+                (shape.points[right_top].x() + shape.points[right_bottom].x())
+                / 2.0,
                 shape.points[right_bottom].x(),
             )
             - margin
@@ -146,8 +152,12 @@ class TestCuboidInteraction(unittest.TestCase):
         dy = shape.points[0].y() - left_before[0].y()
         self.assertAlmostEqual(dy, 18.0, places=5)
         for i, before in zip(left_indices, left_before):
-            self.assertAlmostEqual(shape.points[i].x(), before.x() + dx, places=5)
-            self.assertAlmostEqual(shape.points[i].y(), before.y() + dy, places=5)
+            self.assertAlmostEqual(
+                shape.points[i].x(), before.x() + dx, places=5
+            )
+            self.assertAlmostEqual(
+                shape.points[i].y(), before.y() + dy, places=5
+            )
         for i, before in zip(right_indices, right_before):
             self.assertAlmostEqual(shape.points[i].x(), before.x(), places=5)
             self.assertAlmostEqual(shape.points[i].y(), before.y(), places=5)
@@ -155,7 +165,9 @@ class TestCuboidInteraction(unittest.TestCase):
             max(shape.points[i].x() for i in left_indices), right_limit
         )
 
-    def test_right_face_drag_moves_in_xy_and_respects_back_left_constraint(self):
+    def test_right_face_drag_moves_in_xy_and_respects_back_left_constraint(
+        self,
+    ):
         shape = self.create_cuboid_shape(depth_x=30.0, depth_y=-10.0)
         margin = self.canvas.cuboid_constraint_margin()
         left_indices = [0, 3, 4, 7]
@@ -170,7 +182,8 @@ class TestCuboidInteraction(unittest.TestCase):
         left_limit = (
             max(
                 shape.points[left_top].x(),
-                (shape.points[left_top].x() + shape.points[left_bottom].x()) / 2.0,
+                (shape.points[left_top].x() + shape.points[left_bottom].x())
+                / 2.0,
                 shape.points[left_bottom].x(),
             )
             + margin
@@ -184,8 +197,12 @@ class TestCuboidInteraction(unittest.TestCase):
         dy = shape.points[1].y() - right_before[0].y()
         self.assertAlmostEqual(dy, -14.0, places=5)
         for i, before in zip(right_indices, right_before):
-            self.assertAlmostEqual(shape.points[i].x(), before.x() + dx, places=5)
-            self.assertAlmostEqual(shape.points[i].y(), before.y() + dy, places=5)
+            self.assertAlmostEqual(
+                shape.points[i].x(), before.x() + dx, places=5
+            )
+            self.assertAlmostEqual(
+                shape.points[i].y(), before.y() + dy, places=5
+            )
         for i, before in zip(left_indices, left_before):
             self.assertAlmostEqual(shape.points[i].x(), before.x(), places=5)
             self.assertAlmostEqual(shape.points[i].y(), before.y(), places=5)
@@ -228,7 +245,9 @@ class TestCuboidInteraction(unittest.TestCase):
         self.canvas.move_cuboid_control(
             shape,
             Shape.CUBOID_BACK_RIGHT_EDGE_CENTER,
-            QtCore.QPointF(before_center.x() + 20.0, before_center.y() + 120.0),
+            QtCore.QPointF(
+                before_center.x() + 20.0, before_center.y() + 120.0
+            ),
         )
         after_center = shape.get_cuboid_control_point(
             Shape.CUBOID_BACK_RIGHT_EDGE_CENTER
@@ -250,15 +269,22 @@ class TestCuboidInteraction(unittest.TestCase):
         back_before = [QtCore.QPointF(shape.points[i]) for i in range(4, 8)]
 
         self.assertIn(5, shape.get_cuboid_visible_control_indices())
-        self.assertIn(Shape.CUBOID_BACK_RIGHT_EDGE_CENTER, shape.get_cuboid_visible_control_indices())
+        self.assertIn(
+            Shape.CUBOID_BACK_RIGHT_EDGE_CENTER,
+            shape.get_cuboid_visible_control_indices(),
+        )
 
         self.canvas.move_cuboid_face_by(
             shape, CUBOID_FACE_BACK, QtCore.QPointF(-140.0, 30.0)
         )
 
         for i in range(4):
-            self.assertAlmostEqual(shape.points[i].x(), front_before[i].x(), places=5)
-            self.assertAlmostEqual(shape.points[i].y(), front_before[i].y(), places=5)
+            self.assertAlmostEqual(
+                shape.points[i].x(), front_before[i].x(), places=5
+            )
+            self.assertAlmostEqual(
+                shape.points[i].y(), front_before[i].y(), places=5
+            )
         for i in range(4):
             self.assertAlmostEqual(
                 shape.points[i + 4].x(), back_before[i].x() - 140.0, places=5
@@ -283,7 +309,9 @@ class TestCuboidInteraction(unittest.TestCase):
         top_indices = [0, 1, 4, 5]
         bottom_indices = [2, 3, 6, 7]
         top_before = [QtCore.QPointF(shape.points[i]) for i in top_indices]
-        bottom_before = [QtCore.QPointF(shape.points[i]) for i in bottom_indices]
+        bottom_before = [
+            QtCore.QPointF(shape.points[i]) for i in bottom_indices
+        ]
         self.canvas.move_cuboid_control(
             shape,
             top_index,
@@ -292,14 +320,22 @@ class TestCuboidInteraction(unittest.TestCase):
                 shape.points[top_index].y() + 8.0,
             ),
         )
-        dy = shape.points[top_index].y() - top_before[top_indices.index(top_index)].y()
+        dy = (
+            shape.points[top_index].y()
+            - top_before[top_indices.index(top_index)].y()
+        )
         for i, before in zip(top_indices, top_before):
             self.assertAlmostEqual(shape.points[i].x(), before.x(), places=5)
-            self.assertAlmostEqual(shape.points[i].y(), before.y() + dy, places=5)
+            self.assertAlmostEqual(
+                shape.points[i].y(), before.y() + dy, places=5
+            )
         for i, before in zip(bottom_indices, bottom_before):
             self.assertAlmostEqual(shape.points[i].x(), before.x(), places=5)
             self.assertAlmostEqual(shape.points[i].y(), before.y(), places=5)
-        self.assertLessEqual(shape.points[top_index].y(), shape.points[bottom_index].y() - margin)
+        self.assertLessEqual(
+            shape.points[top_index].y(),
+            shape.points[bottom_index].y() - margin,
+        )
 
     def test_front_edit_preserves_per_vertex_back_offsets(self):
         shape = self.create_cuboid_shape(depth_x=24.0, depth_y=-12.0)
@@ -307,15 +343,27 @@ class TestCuboidInteraction(unittest.TestCase):
         self.canvas.move_cuboid_control(
             shape,
             top_index,
-            QtCore.QPointF(shape.points[top_index].x(), shape.points[top_index].y() + 8.0),
+            QtCore.QPointF(
+                shape.points[top_index].x(), shape.points[top_index].y() + 8.0
+            ),
         )
-        before_offsets = [shape.points[i + 4] - shape.points[i] for i in range(4)]
+        before_offsets = [
+            shape.points[i + 4] - shape.points[i] for i in range(4)
+        ]
         self.canvas.move_cuboid_control(
             shape,
             Shape.CUBOID_FRONT_RIGHT_EDGE_CENTER,
-            QtCore.QPointF(shape.get_cuboid_control_point(Shape.CUBOID_FRONT_RIGHT_EDGE_CENTER).x() + 12.0, 0.0),
+            QtCore.QPointF(
+                shape.get_cuboid_control_point(
+                    Shape.CUBOID_FRONT_RIGHT_EDGE_CENTER
+                ).x()
+                + 12.0,
+                0.0,
+            ),
         )
-        after_offsets = [shape.points[i + 4] - shape.points[i] for i in range(4)]
+        after_offsets = [
+            shape.points[i + 4] - shape.points[i] for i in range(4)
+        ]
         for before, after in zip(before_offsets, after_offsets):
             self.assertAlmostEqual(before.x(), after.x(), places=5)
             self.assertAlmostEqual(before.y(), after.y(), places=5)
@@ -335,7 +383,9 @@ class TestCuboidInteraction(unittest.TestCase):
             Shape.CUBOID_BACK_LEFT_EDGE_CENTER,
             QtCore.QPointF(front_left + 200.0, 0.0),
         )
-        center = shape.get_cuboid_control_point(Shape.CUBOID_BACK_LEFT_EDGE_CENTER)
+        center = shape.get_cuboid_control_point(
+            Shape.CUBOID_BACK_LEFT_EDGE_CENTER
+        )
         self.assertLessEqual(center.x(), front_left - margin)
 
     def test_front_vertex_constraint_keeps_margin(self):
@@ -344,7 +394,9 @@ class TestCuboidInteraction(unittest.TestCase):
         self.canvas.move_cuboid_control(
             shape,
             0,
-            QtCore.QPointF(shape.points[2].x() + 200.0, shape.points[2].y() + 200.0),
+            QtCore.QPointF(
+                shape.points[2].x() + 200.0, shape.points[2].y() + 200.0
+            ),
         )
         self.assertLessEqual(shape.points[0].x(), shape.points[2].x() - margin)
         self.assertLessEqual(shape.points[0].y(), shape.points[2].y() - margin)
@@ -365,9 +417,10 @@ class TestCuboidInteraction(unittest.TestCase):
         self.assertAlmostEqual(depth_vector[1], expected_depth.y(), places=5)
 
 
-@unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for shape regression tests")
+@unittest.skipUnless(
+    PYQT_AVAILABLE, "PyQt6 is required for shape regression tests"
+)
 class TestShapeRegression(unittest.TestCase):
-
     def test_non_cuboid_nearest_vertex_unchanged(self):
         rectangle = Shape(shape_type="rectangle")
         rectangle.points = [

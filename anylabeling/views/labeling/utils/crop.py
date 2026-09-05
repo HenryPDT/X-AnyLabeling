@@ -102,7 +102,7 @@ def crop_and_save(
 
     cropped_image = image[ymin:ymax, xmin:xmax]
     if cropped_image.size == 0:
-        logger.warning(f"Empty cropped image, skipping save")
+        logger.warning("Empty cropped image, skipping save")
         return
 
     # Create output directory
@@ -453,7 +453,7 @@ def save_crop(self):
     except Exception as e:
         logger.error(f"Error occurred while exporting cropped images: {e}")
         popup = Popup(
-            self.tr(f"Error occurred while exporting cropped images!"),
+            self.tr("Error occurred while exporting cropped images!"),
             self,
             msec=3000,
             icon=new_icon_path("error", "svg"),

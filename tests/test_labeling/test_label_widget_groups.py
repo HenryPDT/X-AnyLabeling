@@ -19,7 +19,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for label widget group tests"
 )
 class TestLabelWidgetGroups(unittest.TestCase):
-
     def test_group_delete_requires_confirmation(self):
         shapes = [object(), object()]
         canvas = SimpleNamespace(

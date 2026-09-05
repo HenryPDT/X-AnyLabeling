@@ -51,9 +51,7 @@ CUBOID_FACE_BACK = "back"
 LABEL_COLORMAP = label_colormap()
 
 
-class Canvas(
-    QtWidgets.QWidget
-):  # pylint: disable=too-many-public-methods, too-many-instance-attributes
+class Canvas(QtWidgets.QWidget):  # pylint: disable=too-many-public-methods, too-many-instance-attributes
     """Canvas widget to handle label drawing"""
 
     zoom_request = QtCore.pyqtSignal(int, QtCore.QPoint)

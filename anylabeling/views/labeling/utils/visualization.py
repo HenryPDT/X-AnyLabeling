@@ -796,7 +796,7 @@ def _confirm_overwrite(self, save_path):
     msg_box.setText(self.tr("File already exists. Choose an action:"))
     msg_box.setInformativeText(
         self.tr(
-            "• Overwrite - Overwrite existing file\n" "• Cancel - Abort export"
+            "• Overwrite - Overwrite existing file\n• Cancel - Abort export"
         )
     )
     msg_box.addButton(self.tr("Overwrite"), QMessageBox.ButtonRole.YesRole)

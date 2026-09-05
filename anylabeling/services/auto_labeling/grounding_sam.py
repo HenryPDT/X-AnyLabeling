@@ -52,8 +52,9 @@ class SegmentAnythingONNX:
     def run_encoder(self, encoder_inputs):
         """Run encoder"""
         features = self.encoder_session.run(None, encoder_inputs)
-        image_embeddings, interm_embeddings = features[0], np.stack(
-            features[1:]
+        image_embeddings, interm_embeddings = (
+            features[0],
+            np.stack(features[1:]),
         )
         return image_embeddings, interm_embeddings
 
@@ -576,9 +577,10 @@ class GroundingSAM(Model):
                 )  # bottom right
                 labels.append(2)
                 labels.append(3)
-        points, labels = np.array(points).astype(np.float32), np.array(
-            labels
-        ).astype(np.float32)
+        points, labels = (
+            np.array(points).astype(np.float32),
+            np.array(labels).astype(np.float32),
+        )
         return points, labels
 
     def unload(self):

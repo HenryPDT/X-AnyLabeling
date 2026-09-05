@@ -75,6 +75,7 @@ You can load and query the calibrated depth data using:
 
 ```python
 import numpy as np
+
 depth_map = np.load("image_depth.npy")
 value = depth_map[y, x]  # Get the mapped value at pixel (x, y)
 ```

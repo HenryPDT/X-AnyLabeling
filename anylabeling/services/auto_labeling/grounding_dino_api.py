@@ -112,8 +112,8 @@ class Grounding_DINO_API(Model):
         prompt_pattern = r"^[a-zA-Z]+(\.[a-zA-Z]+)*$"
         if not re.match(prompt_pattern, text_prompt):
             raise ValueError(
-                f"Invalid text prompt format. "
-                f"It should be English words separated by '.' (e.g., 'cat.dog')."
+                "Invalid text prompt format. "
+                "It should be English words separated by '.' (e.g., 'cat.dog')."
             )
 
         cv_image = qt_img_to_rgb_cv_img(image, image_path)

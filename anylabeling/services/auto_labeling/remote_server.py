@@ -43,7 +43,6 @@ def is_client_side_iou_remote_model(model_id, model_info=None):
 
 
 class RemoteServer(Model):
-
     class Meta:
         required_config_names = [
             "type",

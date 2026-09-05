@@ -6,7 +6,6 @@ import numpy as np
 
 
 class TrtBaseModel:
-
     def __init__(
         self,
         model_path: str,

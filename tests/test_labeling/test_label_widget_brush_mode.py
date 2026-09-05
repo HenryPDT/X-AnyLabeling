@@ -18,7 +18,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for label widget brush mode tests"
 )
 class TestLabelWidgetBrushMode(unittest.TestCase):
-
     def make_selection_widget(self):
         action_names = [
             "delete",

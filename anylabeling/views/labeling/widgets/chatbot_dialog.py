@@ -467,8 +467,8 @@ class ChatbotDialog(QDialog):
             btn.setFixedSize(*ICON_SIZE_NORMAL)
             btn.setStyleSheet(ChatbotDialogStyle.get_button_style())
             btn.clicked.connect(
-                lambda checked=False, mode=btn_mode: self.open_image_file_or_folder(
-                    mode=mode
+                lambda checked=False, mode=btn_mode: (
+                    self.open_image_file_or_folder(mode=mode)
                 )
             )
             btn.installEventFilter(self)
@@ -745,7 +745,7 @@ class ChatbotDialog(QDialog):
         temp_info_btn.installEventFilter(self)
         temp_info_btn.setObjectName("temperature_btn")
 
-        self.temp_value = QLabel(f"{_model_settings['temperature']/10:.1f}")
+        self.temp_value = QLabel(f"{_model_settings['temperature'] / 10:.1f}")
         self.temp_value.setStyleSheet(
             ChatbotDialogStyle.get_settings_label_style()
         )
@@ -766,7 +766,7 @@ class ChatbotDialog(QDialog):
         self.temp_slider.setValue(_model_settings["temperature"])
         self.temp_slider.setStyleSheet(ChatbotDialogStyle.get_slider_style())
         self.temp_slider.valueChanged.connect(
-            lambda v: self.temp_value.setText(f"{v/10:.1f}")
+            lambda v: self.temp_value.setText(f"{v / 10:.1f}")
         )
         model_params_layout.addWidget(self.temp_slider)
 
@@ -1037,9 +1037,9 @@ class ChatbotDialog(QDialog):
         """Handle the API address changed event"""
         for provider in self.providers:
             if getattr(self, f"{provider}_btn").isChecked():
-                self.providers[provider][
-                    "api_address"
-                ] = self.api_address.text()
+                self.providers[provider]["api_address"] = (
+                    self.api_address.text()
+                )
                 save_json(self.providers, get_providers_config_path())
 
                 if provider == self.default_provider:

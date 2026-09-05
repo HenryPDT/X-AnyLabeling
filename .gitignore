@@ -29,6 +29,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 requirements.txt
+uv.lock
 setup.py
 x_anylabeling_cvhub520.egg-info
 

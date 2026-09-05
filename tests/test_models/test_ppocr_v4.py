@@ -34,6 +34,4 @@ def test_rec_char_dict_path_uses_config_relative_path(tmp_path, monkeypatch):
 def test_rec_char_dict_path_keeps_lang_default():
     assert PPOCRv4.get_rec_char_dict_path(
         {"lang": "japan"}, "/x/auto_labeling"
-    ) == os.path.join(
-        "/x/auto_labeling", "configs/ppocr/japan_dict.txt"
-    )
+    ) == os.path.join("/x/auto_labeling", "configs/ppocr/japan_dict.txt")

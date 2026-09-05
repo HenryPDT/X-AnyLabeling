@@ -17,7 +17,6 @@ from anylabeling.views.labeling import label_file
 
 
 class TestPillowLimits(unittest.TestCase):
-
     def test_label_file_import_preserves_pillow_pixel_limit(self):
         with mock.patch.object(Image, "MAX_IMAGE_PIXELS", 1):
             importlib.reload(label_file)

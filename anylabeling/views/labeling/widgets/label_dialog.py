@@ -44,7 +44,9 @@ class ColoredComboBox(QtWidgets.QComboBox):
     def __init__(self, parent=None):
         super(ColoredComboBox, self).__init__(parent)
         t = get_theme()
-        self.setStyleSheet(get_settings_combo_style() + f"""
+        self.setStyleSheet(
+            get_settings_combo_style()
+            + f"""
             QComboBox {{
                 background-color: {t["background_secondary"]};
                 border: 1px solid {t["border"]};
@@ -54,7 +56,8 @@ class ColoredComboBox(QtWidgets.QComboBox):
                 background-color: {t["background_secondary"]};
                 border-color: {t["border_light"]};
             }}
-            """)
+            """
+        )
 
     def addModeItem(self, text, userData=None):
         self.addItem(text, userData)
@@ -435,7 +438,9 @@ class GroupIDModifyDialog(QtWidgets.QDialog):
             self.table_widget.setColumnWidth(idx, 260)
 
         # Table style
-        self.table_widget.setStyleSheet(get_dialog_style() + """
+        self.table_widget.setStyleSheet(
+            get_dialog_style()
+            + """
             QTableWidget {
                 border: none;
                 border-radius: 8px;
@@ -458,7 +463,8 @@ class GroupIDModifyDialog(QtWidgets.QDialog):
             QTableWidget::focus {
                 outline: none;
             }
-            """)
+            """
+        )
 
         from anylabeling.views.labeling.utils.theme import get_theme as _gt
 
@@ -1963,7 +1969,7 @@ class LabelDialog(QtWidgets.QDialog):
             label, QtCore.Qt.MatchFlag.MatchExactly
         )
         if not items:
-            logger.warning(f"Skipping empty items.")
+            logger.warning("Skipping empty items.")
             return
 
         for item in items:

@@ -131,9 +131,7 @@ def _inline_formula_img_tag(formula_source: str, text_color: str) -> str:
     formula_data_uri = _pixmap_to_data_uri(formula_pixmap)
     if not formula_data_uri:
         return ""
-    return (
-        f'<img src="{formula_data_uri}" ' 'style="vertical-align: middle;"/>'
-    )
+    return f'<img src="{formula_data_uri}" style="vertical-align: middle;"/>'
 
 
 def _text_with_inline_formulas_to_html(content: str) -> str:
@@ -531,7 +529,7 @@ def _table_tokens_to_html(content: str) -> str:
             if col_span > 1:
                 attrs.append(f' colspan="{col_span}"')
             cell_chunks.append(
-                f"<td{''.join(attrs)} style=\""
+                f'<td{"".join(attrs)} style="'
                 f"border: 1px solid {theme['border']};"
                 "padding: 6px 10px;"
                 "vertical-align: middle;"
@@ -632,8 +630,7 @@ class PPOCRRecentListItemWidget(QWidget):
 
         self.time_label = QLabel(record.timestamp)
         self.time_label.setStyleSheet(
-            f"QLabel {{ color: {theme['text_secondary']};"
-            " font-size: 11px; }"
+            f"QLabel {{ color: {theme['text_secondary']}; font-size: 11px; }}"
         )
 
         status_layout.addWidget(self.status_dot)
@@ -885,17 +882,17 @@ class PPOCRPreviewCanvas(QWidget):
         theme = get_theme()
         self._copy_button.setStyleSheet(f"""
             QPushButton {{
-                background: {theme['surface']};
-                border: 1px solid {theme['border']};
+                background: {theme["surface"]};
+                border: 1px solid {theme["border"]};
                 border-radius: 17px;
                 padding: 0px 14px;
-                color: {theme['text']};
+                color: {theme["text"]};
                 font-size: 13px;
                 font-weight: 500;
             }}
             QPushButton:hover {{
-                background: {theme['surface_hover']};
-                border: 1px solid {theme['border_light']};
+                background: {theme["surface_hover"]};
+                border: 1px solid {theme["border_light"]};
                 color: rgb(70, 88, 255);
             }}
             """)

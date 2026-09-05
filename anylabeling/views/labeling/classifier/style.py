@@ -35,11 +35,11 @@ def get_image_label_style() -> str:
 
 
 def get_image_container_style() -> str:
-    return f"""
-        QWidget {{
+    return """
+        QWidget {
             background-color: transparent;
             border: none;
-        }}
+        }
     """
 
 

@@ -24,7 +24,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for result action icon tests"
 )
 class TestPPOCRResultActionIcons(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:

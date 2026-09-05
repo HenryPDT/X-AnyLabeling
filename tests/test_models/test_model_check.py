@@ -42,7 +42,6 @@ def _blocking_worker(path):
 
 
 class TestONNXModelCheck(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
 

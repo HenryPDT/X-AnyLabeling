@@ -155,7 +155,6 @@ class ChineseClipONNX:
 
 @lru_cache()
 def default_vocab():
-    import os
     from importlib.resources import files
     from anylabeling.services.auto_labeling import configs
 

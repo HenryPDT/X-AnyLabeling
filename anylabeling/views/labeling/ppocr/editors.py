@@ -1641,8 +1641,8 @@ class PPOCRTextBlockEditor(QFrame):
             action = QAction(PPOCR_EDITOR_HEADING_LEVELS[level]["label"], menu)
             action.setCheckable(True)
             action.triggered.connect(
-                lambda _checked=False, heading_level=level: self._apply_heading(
-                    heading_level
+                lambda _checked=False, heading_level=level: (
+                    self._apply_heading(heading_level)
                 )
             )
             menu.addAction(action)

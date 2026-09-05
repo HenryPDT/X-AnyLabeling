@@ -198,7 +198,7 @@ class RandomCrop:
             )
             target["boxes"] = new_boxes
             target["labels"] = new_labels
-        except Exception as e:
+        except Exception:
             pass
         return img, target
 

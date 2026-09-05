@@ -314,7 +314,10 @@ def get_segment_list_style():
 
 def get_label_settings_dialog_style():
     t = get_theme()
-    return get_dialog_style() + _checkbox_indicator_qss() + f"""
+    return (
+        get_dialog_style()
+        + _checkbox_indicator_qss()
+        + f"""
         QLabel#XvaSettingsTitle {{
             color: {t["text"]};
             font-size: 15px;
@@ -403,6 +406,7 @@ def get_label_settings_dialog_style():
             background: {t["background_secondary"]};
         }}
     """
+    )
 
 
 def get_dialog_style():

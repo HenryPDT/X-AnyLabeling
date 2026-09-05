@@ -21,15 +21,15 @@ except Exception:
 
 HTML_TABLE_CONTENT = (
     "<table><tr><td></td><td>符号</td><td>图象的特征</td></tr>"
-    "<tr><td rowspan=\"2\">a</td><td>a&gt;0</td><td>开口向上</td></tr>"
+    '<tr><td rowspan="2">a</td><td>a&gt;0</td><td>开口向上</td></tr>'
     "<tr><td>a&lt;0</td><td>开口向下</td></tr>"
-    "<tr><td rowspan=\"3\">b</td><td>b=0</td><td>对称轴为y轴</td></tr>"
+    '<tr><td rowspan="3">b</td><td>b=0</td><td>对称轴为y轴</td></tr>'
     "<tr><td>a、b同号</td><td>对称轴在y轴左侧</td></tr>"
     "<tr><td>a、b异号</td><td>对称轴在y轴右侧</td></tr>"
-    "<tr><td rowspan=\"3\">c</td><td>c=0</td><td>图象过原点</td></tr>"
+    '<tr><td rowspan="3">c</td><td>c=0</td><td>图象过原点</td></tr>'
     "<tr><td>c&gt;0</td><td>与y轴的正半轴相交</td></tr>"
     "<tr><td>c&lt;0</td><td>与y轴的负半轴相交</td></tr>"
-    "<tr><td rowspan=\"3\">b²-4ac</td><td>b²-4ac=0</td>"
+    '<tr><td rowspan="3">b²-4ac</td><td>b²-4ac=0</td>'
     "<td>与x轴有唯一交点（顶点）</td></tr>"
     "<tr><td>b²-4ac&gt;0</td><td>与x轴有两个不同的交点</td></tr>"
     "<tr><td>b²-4ac&lt;0</td><td>与x轴无交点</td></tr></table>"

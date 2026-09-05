@@ -419,9 +419,7 @@ def visualize_prediction(
             label = f"{class_}"
             w, h = cv2.getTextSize(
                 label, 0, fontScale=text_size, thickness=text_th
-            )[
-                0
-            ]  # label width, height
+            )[0]  # label width, height
             outside = p1[1] - h - 3 >= 0  # label fits outside box
             p2 = p1[0] + w, p1[1] - h - 3 if outside else p1[1] + h + 3
             # add bounding box text
@@ -536,9 +534,7 @@ def visualize_object_predictions(
 
             w, h = cv2.getTextSize(
                 label, 0, fontScale=text_size, thickness=text_th
-            )[
-                0
-            ]  # label width, height
+            )[0]  # label width, height
             outside = p1[1] - h - 3 >= 0  # label fits outside box
             p2 = p1[0] + w, p1[1] - h - 3 if outside else p1[1] + h + 3
             # add bounding box text

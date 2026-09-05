@@ -95,10 +95,7 @@ def test_is_prepared_dataset_resolves_relative_split_directories(tmp_path):
     (dataset_root / "images" / "val").mkdir(parents=True)
     data_path = tmp_path / "data.yaml"
     data_path.write_text(
-        "path: dataset\n"
-        "train: images/train\n"
-        "val: images/val\n"
-        "names: [cat]\n",
+        "path: dataset\ntrain: images/train\nval: images/val\nnames: [cat]\n",
         encoding="utf-8",
     )
 
@@ -131,12 +128,14 @@ def test_wsl_dataset_paths_are_normalized_for_windows(monkeypatch, tmp_path):
     monkeypatch.setattr(
         general.os.path,
         "isdir",
-        lambda path: path.replace("\\", "/")
-        in {
-            mapped_root,
-            f"{mapped_root}/images/train",
-            f"{mapped_root}/images/val",
-        },
+        lambda path: (
+            path.replace("\\", "/")
+            in {
+                mapped_root,
+                f"{mapped_root}/images/train",
+                f"{mapped_root}/images/val",
+            }
+        ),
     )
     monkeypatch.setattr(general, "get_dataset_path", lambda: str(tmp_path))
 

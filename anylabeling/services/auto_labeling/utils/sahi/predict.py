@@ -626,9 +626,9 @@ def predict(  # noqa: C901
                 verbose=1 if verbose else 0,
             )
             object_prediction_list = prediction_result.object_prediction_list
-            durations_in_seconds[
-                "slice"
-            ] += prediction_result.durations_in_seconds["slice"]
+            durations_in_seconds["slice"] += (
+                prediction_result.durations_in_seconds["slice"]
+            )
         else:
             # get standard prediction
             prediction_result = get_prediction(
@@ -641,9 +641,9 @@ def predict(  # noqa: C901
             )
             object_prediction_list = prediction_result.object_prediction_list
 
-        durations_in_seconds[
-            "prediction"
-        ] += prediction_result.durations_in_seconds["prediction"]
+        durations_in_seconds["prediction"] += (
+            prediction_result.durations_in_seconds["prediction"]
+        )
         # Show prediction time
         if verbose:
             tqdm.write(
@@ -941,9 +941,9 @@ def predict_fiftyone(
                     postprocess_class_agnostic=postprocess_class_agnostic,
                     verbose=verbose,
                 )
-                durations_in_seconds[
-                    "slice"
-                ] += prediction_result.durations_in_seconds["slice"]
+                durations_in_seconds["slice"] += (
+                    prediction_result.durations_in_seconds["slice"]
+                )
             else:
                 # get standard prediction
                 prediction_result = get_prediction(
@@ -954,9 +954,9 @@ def predict_fiftyone(
                     postprocess=None,
                     verbose=0,
                 )
-                durations_in_seconds[
-                    "prediction"
-                ] += prediction_result.durations_in_seconds["prediction"]
+                durations_in_seconds["prediction"] += (
+                    prediction_result.durations_in_seconds["prediction"]
+                )
 
             # Save predictions to dataset
             sample[model_type] = fo.Detections(

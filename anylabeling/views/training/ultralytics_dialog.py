@@ -472,7 +472,7 @@ class UltralyticsDialog(QDialog):
             else theme["error"]
         )
         self.labeled_images_hint.setText(
-            f'{self.tr("Valid Images:")} {valid_images} | '
+            f"{self.tr('Valid Images:')} {valid_images} | "
             f'{self.tr("Required:")} <span style="color: {color};">'
             f"{MIN_LABELED_IMAGES_THRESHOLD}</span>"
         )
@@ -1900,8 +1900,8 @@ class UltralyticsDialog(QDialog):
         image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         image_label.setText(self.tr("No image"))
         image_label.setScaledContents(False)
-        image_label.mousePressEvent = (
-            lambda event, idx=index: self.on_image_clicked(idx)
+        image_label.mousePressEvent = lambda event, idx=index: (
+            self.on_image_clicked(idx)
         )
         self.image_labels.append(image_label)
         self.image_paths.append(None)

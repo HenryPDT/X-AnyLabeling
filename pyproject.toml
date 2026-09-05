@@ -99,12 +99,11 @@ dependencies = [
 
 dev = [
     "build",
-    "black",
-    "flake8",
     "pyinstaller",
     "pytest",
     "PySide6>=6.6.0,<6.10.0; sys_platform == 'linux'",
     "PySide6>=6.6.0; sys_platform != 'linux'",
+    "ruff>=0.8.0",
     "twine",
 ]
 
@@ -188,35 +187,42 @@ markers = [
 ]
 norecursedirs = [".git", "dist", "build"]
 
-[tool.black]
+[tool.ruff]
 line-length = 79
-target-version = ["py311"]
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv(?:-[^/]+)?
-  | _build
-  | buck-out
-  | build
-  | dist
-  | tests
-)/
-| ^/anylabeling/resources/resources\.py$
-'''
-
-[tool.flake8]
-max-line-length = 79
-max-complexity = 18
-select = ["B", "C", "E", "F", "W", "T4", "B9"]
-ignore = ["E203", "E266", "E501", "W503", "F403", "F401", "B905", "E402"]
+target-version = "py312"
 exclude = [
-  ".git",
-  "__pycache__",
-  "build",
-  "dist",
-  ".venv",
-  "anylabeling/resources/resources.py"
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    ".venv",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "anylabeling/resources/resources.py",
 ]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "C90",  # mccabe complexity
+]
+ignore = [
+    "E266",  # too many leading '#' for block comment
+    "E501",  # line too long (handled by formatter)
+    "F403",  # 'from module import *' used; unable to detect undefined names
+    "F401",  # imported but unused
+    "F405",  # name may be undefined, or defined from star imports (companion to F403)
+    "E402",  # module level import not at top of file
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 18
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

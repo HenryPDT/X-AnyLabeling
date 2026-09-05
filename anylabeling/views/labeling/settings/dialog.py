@@ -279,23 +279,23 @@ class SettingsDialog(QtWidgets.QDialog):
                 border: none;
             }}
             QScrollBar:vertical {{
-                background-color: {self._rgb('right_bg')};
+                background-color: {self._rgb("right_bg")};
                 width: 10px;
                 margin: 16px 0 16px 0;
                 border: none;
             }}
             QScrollBar::handle:vertical {{
-                background-color: {self._rgb('left_text')};
+                background-color: {self._rgb("left_text")};
                 min-height: 20px;
                 border-radius: 5px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background-color: {self._rgb('left_text')};
+                background-color: {self._rgb("left_text")};
             }}
             QScrollBar::add-line:vertical,
             QScrollBar::sub-line:vertical {{
                 border: none;
-                background: {self._rgb('right_bg')};
+                background: {self._rgb("right_bg")};
                 height: 16px;
             }}
             QScrollBar::sub-line:vertical {{
@@ -376,24 +376,24 @@ class SettingsDialog(QtWidgets.QDialog):
     def _message_box_style(self) -> str:
         return f"""
             QMessageBox {{
-                background: {self._rgb('card_bg')};
-                color: {self._rgb('title_text')};
+                background: {self._rgb("card_bg")};
+                color: {self._rgb("title_text")};
             }}
             QMessageBox QLabel {{
                 background: transparent;
-                color: {self._rgb('title_text')};
+                color: {self._rgb("title_text")};
             }}
             QMessageBox QPushButton {{
                 min-width: 84px;
                 min-height: 30px;
-                border: 1px solid {self._rgb('line')};
+                border: 1px solid {self._rgb("line")};
                 border-radius: 6px;
-                background: {self._rgb('right_bg')};
-                color: {self._rgb('title_text')};
+                background: {self._rgb("right_bg")};
+                color: {self._rgb("title_text")};
                 padding: 0 12px;
             }}
             QMessageBox QPushButton:hover {{
-                background: {self._rgb('card_bg')};
+                background: {self._rgb("card_bg")};
             }}
         """
 
@@ -404,10 +404,10 @@ class SettingsDialog(QtWidgets.QDialog):
 
         shell = QtWidgets.QFrame(self)
         shell.setObjectName("settingsShell")
-        shell.setStyleSheet(f"""
-            QFrame#settingsShell {{
+        shell.setStyleSheet("""
+            QFrame#settingsShell {
                 background: transparent;
-            }}
+            }
             """)
         shell_layout = QtWidgets.QHBoxLayout(shell)
         shell_layout.setContentsMargins(0, 0, 0, 0)
@@ -418,7 +418,7 @@ class SettingsDialog(QtWidgets.QDialog):
         left_panel.setFixedWidth(160)
         left_panel.setStyleSheet(f"""
             QWidget#settingsLeftPanel {{
-                background: {self._rgb('left_bg')};
+                background: {self._rgb("left_bg")};
                 border-top-left-radius: 11px;
                 border-bottom-left-radius: 11px;
             }}
@@ -462,10 +462,10 @@ class SettingsDialog(QtWidgets.QDialog):
                 height: 28px;
             }}
             QListWidget::item:hover {{
-                background: {self._rgb('left_hover')};
+                background: {self._rgb("left_hover")};
             }}
             QListWidget::item:selected {{
-                background: {self._rgb('left_selected')};
+                background: {self._rgb("left_selected")};
             }}
             """)
 
@@ -509,8 +509,8 @@ class SettingsDialog(QtWidgets.QDialog):
         right_panel.setObjectName("settingsRightPanel")
         right_panel.setStyleSheet(f"""
             QWidget#settingsRightPanel {{
-                background: {self._rgb('right_bg')};
-                border-left: 1px solid {self._rgb('line')};
+                background: {self._rgb("right_bg")};
+                border-left: 1px solid {self._rgb("line")};
                 border-top-right-radius: 11px;
                 border-bottom-right-radius: 11px;
             }}
@@ -538,7 +538,7 @@ class SettingsDialog(QtWidgets.QDialog):
             QPushButton {{
                 border: none;
                 background: transparent;
-                color: {self._rgb('title_text')};
+                color: {self._rgb("title_text")};
                 font-size: 16px;
                 font-weight: 500;
                 border-radius: 0px;
@@ -612,13 +612,13 @@ class SettingsDialog(QtWidgets.QDialog):
         self.shortcuts_reset_button.setStyleSheet(f"""
             QPushButton {{
                 min-width: 84px;
-                border: 1px solid {self._rgb('line')};
+                border: 1px solid {self._rgb("line")};
                 border-radius: 8px;
-                color: {self._rgb('title_text')};
-                background: {self._rgb('right_bg')};
+                color: {self._rgb("title_text")};
+                background: {self._rgb("right_bg")};
             }}
             QPushButton:hover {{
-                background: {self._rgb('card_bg')};
+                background: {self._rgb("card_bg")};
             }}
             """)
         self.shortcuts_save_button = QtWidgets.QPushButton(
@@ -1028,10 +1028,12 @@ class SettingsDialog(QtWidgets.QDialog):
             radio = QtWidgets.QRadioButton(str(option), container)
             radio.setStyleSheet(self._radio_style())
             radio.toggled.connect(
-                lambda checked, value=option, f=field: self._on_model_hub_toggled(
-                    f,
-                    checked,
-                    value,
+                lambda checked, value=option, f=field: (
+                    self._on_model_hub_toggled(
+                        f,
+                        checked,
+                        value,
+                    )
                 )
             )
             group.addButton(radio)
@@ -1094,10 +1096,12 @@ class SettingsDialog(QtWidgets.QDialog):
                 radio = QtWidgets.QRadioButton(text, container)
                 radio.setStyleSheet(self._radio_style())
                 radio.toggled.connect(
-                    lambda checked, value=option, f=field: self._on_model_hub_toggled(
-                        f,
-                        checked,
-                        value,
+                    lambda checked, value=option, f=field: (
+                        self._on_model_hub_toggled(
+                            f,
+                            checked,
+                            value,
+                        )
                     )
                 )
                 layout.addWidget(radio)
@@ -1229,9 +1233,11 @@ class SettingsDialog(QtWidgets.QDialog):
                 )
             self._prepare_combo_popup(editor)
             editor.currentIndexChanged.connect(
-                lambda _index, f=field, w=editor: self._on_editor_value_changed(
-                    f,
-                    w.currentData(),
+                lambda _index, f=field, w=editor: (
+                    self._on_editor_value_changed(
+                        f,
+                        w.currentData(),
+                    )
                 )
             )
             return (
@@ -1535,7 +1541,7 @@ class SettingsDialog(QtWidgets.QDialog):
         middle_panel = QtWidgets.QWidget(container)
         middle_panel.setFixedWidth(208)
         middle_panel.setStyleSheet(f"""
-            background: {self._rgb('shortcut_middle_bg')};
+            background: {self._rgb("shortcut_middle_bg")};
             border-radius: 0px;
             """)
         middle_layout = QtWidgets.QVBoxLayout(middle_panel)
@@ -1554,15 +1560,15 @@ class SettingsDialog(QtWidgets.QDialog):
             QListWidget::item {{
                 min-height: 30px;
                 border-radius: 6px;
-                color: {self._rgb('title_text')};
+                color: {self._rgb("title_text")};
                 padding: 0 8px;
             }}
             QListWidget::item:hover {{
-                background: {self._rgb('shortcut_group_hover')};
+                background: {self._rgb("shortcut_group_hover")};
             }}
             QListWidget::item:selected {{
-                background: {self._rgb('left_selected')};
-                color: {self._rgb('left_active_text')};
+                background: {self._rgb("left_selected")};
+                color: {self._rgb("left_active_text")};
             }}
             """)
 
@@ -1593,7 +1599,7 @@ class SettingsDialog(QtWidgets.QDialog):
             QWidget#shortcutsTopPanel {{
                 border: none;
                 border-radius: 0px;
-                background: {self._rgb('card_bg')};
+                background: {self._rgb("card_bg")};
             }}
             """)
         top_panel_layout = QtWidgets.QVBoxLayout(top_panel)

@@ -238,10 +238,10 @@ class ChatbotDialogStyle:
 
     def get_input_container_style(theme: Dict[str, str] = None) -> str:
         theme = theme or get_theme()
-        return f"""
-            QWidget {{
+        return """
+            QWidget {
                 background-color: transparent;
-            }}
+            }
         """
 
     def get_input_frame_style(theme: Dict[str, str] = None) -> str:
@@ -352,11 +352,11 @@ class ChatbotDialogStyle:
 
     def get_settings_label_style(theme: Dict[str, str] = None) -> str:
         theme = theme or get_theme()
-        return f"""
-            QLabel {{
+        return """
+            QLabel {
                 background-color: transparent;
                 border-left: none;
-            }}
+            }
         """
 
     def get_help_btn_style(theme: Dict[str, str] = None) -> str:
@@ -681,10 +681,10 @@ class ChatMessageStyle:
 
     def get_role_label_style(theme: Dict[str, str] = None) -> str:
         theme = theme or get_theme()
-        return f"""
-            QLabel {{
+        return """
+            QLabel {
                 background-color: transparent;
-            }}
+            }
         """
 
     def get_role_label_background_style(theme: Dict[str, str] = None) -> str:

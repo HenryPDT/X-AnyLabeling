@@ -307,16 +307,25 @@ class UNet(Model):
         results = []
         for i in range(c):
             # Skip the background label
-            if self.classes[i] == '_background_':
+            if self.classes[i] == "_background_":
                 continue
             # Get the category index of each pixel for the first batch by adding [0].
             mask = outputs[0] == i
             # Rescaled to original shape
-            mask_resized = cv2.resize(mask.astype(np.uint8), (image_width, image_height))
+            mask_resized = cv2.resize(
+                mask.astype(np.uint8), (image_width, image_height)
+            )
             # Get the contours
-            contours, _ = cv2.findContours(mask_resized, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(
+                mask_resized, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
             # Append the contours along with their respective class labels
-            results.append((self.classes[i], [np.squeeze(contour).tolist() for contour in contours]))
+            results.append(
+                (
+                    self.classes[i],
+                    [np.squeeze(contour).tolist() for contour in contours],
+                )
+            )
         return results
 
     def predict_shapes(self, image, image_path=None):
@@ -558,23 +567,22 @@ from ultralytics import YOLO
 import torch
 import os
 
-if __name__ == '__main__':
-    model_path = 'hyper-yolon-seg.pt' # Or your specific model weight file
+if __name__ == "__main__":
+    model_path = "hyper-yolon-seg.pt"  # Or your specific model weight file
     if isinstance(model_path, (str, Path)):
         model = YOLO(model_path)
 
     # Ensure export arguments are set correctly
     output_filename = model.export(
         imgsz=640,
-        batch=1,         # Set batch size to 1
-        format='onnx',   # Specify ONNX format
+        batch=1,  # Set batch size to 1
+        format="onnx",  # Specify ONNX format
         int8=False,
-        half=False,      # Set half to False
-        device="0",      # Or "cpu"
-        verbose=False
+        half=False,  # Set half to False
+        device="0",  # Or "cpu"
+        verbose=False,
     )
     print(f"Model exported to {output_filename}")
-
 ```
 
 Then run the export script (adjust path as needed):

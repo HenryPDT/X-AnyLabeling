@@ -384,28 +384,28 @@ def evaluate_core(  # noqa: C901
                     nameStrLen=max_cat_name_len,
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP', f"{float(ap):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP", f"{float(ap):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP_s', f"{float(ap_s):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP_s", f"{float(ap_s):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP_m', f"{float(ap_m):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP_m", f"{float(ap_m):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP_l', f"{float(ap_l):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP_l", f"{float(ap_l):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP50', f"{float(ap50):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP50", f"{float(ap50):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP50_s', f"{float(ap50_s):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP50_s", f"{float(ap50_s):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP50_m', f"{float(ap50_m):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP50_m", f"{float(ap50_m):0.3f}")
                 )
                 results_per_category.append(
-                    (f'{metric}_{nm["name"]}_mAP50_l', f"{float(ap50_l):0.3f}")
+                    (f"{metric}_{nm['name']}_mAP50_l", f"{float(ap50_l):0.3f}")
                 )
 
             num_columns = min(6, len(results_per_category) * 2)

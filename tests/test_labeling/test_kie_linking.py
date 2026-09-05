@@ -17,7 +17,6 @@ except Exception:
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for KIE linking tests")
 class TestKieLinking(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         cls.app = QtWidgets.QApplication.instance()
@@ -66,9 +65,7 @@ class TestKieLinking(unittest.TestCase):
         self.dialog.reset_linking([[1, 2]])
         item = self.dialog.linking_list.item(0)
 
-        self.assertEqual(
-            item.data(QtCore.Qt.ItemDataRole.UserRole), [1, 2]
-        )
+        self.assertEqual(item.data(QtCore.Qt.ItemDataRole.UserRole), [1, 2])
         item.setText("__import__('builtins').sum([20, 22])")
 
         self.assertEqual(self.dialog.get_kie_linking(), [[1, 2]])
@@ -80,9 +77,7 @@ class TestKieLinking(unittest.TestCase):
 
         item = self.dialog.linking_list.item(0)
         self.assertEqual(item.text(), "[3, 4]")
-        self.assertEqual(
-            item.data(QtCore.Qt.ItemDataRole.UserRole), [3, 4]
-        )
+        self.assertEqual(item.data(QtCore.Qt.ItemDataRole.UserRole), [3, 4])
         self.assertEqual(self.dialog.get_kie_linking(), [[3, 4]])
 
     def test_dialog_rejects_boolean_linking_values(self):

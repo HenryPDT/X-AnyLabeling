@@ -188,9 +188,8 @@ def _get_yolo_export_files(image_list, source_root, save_path, layout=None):
             relative_image_path = osp.relpath(image_file, source_root)
         except ValueError:
             relative_image_path = osp.basename(image_file)
-        if (
-            relative_image_path == osp.pardir
-            or relative_image_path.startswith(osp.pardir + osp.sep)
+        if relative_image_path == osp.pardir or relative_image_path.startswith(
+            osp.pardir + osp.sep
         ):
             relative_image_path = osp.basename(image_file)
         relative_label_path = osp.splitext(relative_image_path)[0] + ".txt"

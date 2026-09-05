@@ -392,7 +392,7 @@ class PPOCRDialog(QDialog):
         theme = get_theme()
         splitter.setStyleSheet(f"""
             QSplitter#PPOCRWorkspaceSplitter::handle {{
-                background: {theme['background_secondary']};
+                background: {theme["background_secondary"]};
                 border: none;
             }}
             """)
@@ -1749,10 +1749,12 @@ class PPOCRDialog(QDialog):
             ),
         )
         editor.saveRequested.connect(
-            lambda text, block_data=block, editor_widget=editor: self.save_block_edit(
-                block_data,
-                text,
-                editor_widget,
+            lambda text, block_data=block, editor_widget=editor: (
+                self.save_block_edit(
+                    block_data,
+                    text,
+                    editor_widget,
+                )
             )
         )
         editor.cancelRequested.connect(self.cancel_block_edit)
@@ -2058,9 +2060,11 @@ class PPOCRDialog(QDialog):
         if editor is not None:
             QTimer.singleShot(
                 0,
-                lambda editor_widget=editor, value=scroll_value: self.activate_block_editor(
-                    editor_widget,
-                    value,
+                lambda editor_widget=editor, value=scroll_value: (
+                    self.activate_block_editor(
+                        editor_widget,
+                        value,
+                    )
                 ),
             )
 

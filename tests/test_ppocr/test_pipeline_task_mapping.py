@@ -34,7 +34,6 @@ except Exception:
     "PPOCR pipeline dependencies are required for pipeline contract tests",
 )
 class TestPPOCRPipelineTaskMapping(unittest.TestCase):
-
     def setUp(self):
         self.pipeline = PPOCRPipeline.__new__(PPOCRPipeline)
 

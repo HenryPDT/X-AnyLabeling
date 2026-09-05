@@ -328,9 +328,10 @@ class EdgeSAMONNX(object):
                 )  # bottom right
                 labels.append(2)
                 labels.append(3)
-        points, labels = np.array(points).astype(np.float32), np.array(
-            labels
-        ).astype(np.float32)
+        points, labels = (
+            np.array(points).astype(np.float32),
+            np.array(labels).astype(np.float32),
+        )
         return points, labels
 
     @staticmethod

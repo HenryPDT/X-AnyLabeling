@@ -19,9 +19,10 @@ except Exception:
     PYQT_AVAILABLE = False
 
 
-@unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for PPOCR recents list tests")
+@unittest.skipUnless(
+    PYQT_AVAILABLE, "PyQt6 is required for PPOCR recents list tests"
+)
 class TestPPOCRRecentsListWidget(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:

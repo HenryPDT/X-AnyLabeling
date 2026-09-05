@@ -58,9 +58,7 @@ class TimelineWidget(QWidget):
 
         self._duration_ms = 0
         self._playhead_ms = 0
-        self._segments = (
-            []
-        )  # list of dicts: {id, label, start_ms, end_ms, color}
+        self._segments = []  # list of dicts: {id, label, start_ms, end_ms, color}
         self._selected_id = ""
         self._hover_id = ""
         self._hover_pos = None

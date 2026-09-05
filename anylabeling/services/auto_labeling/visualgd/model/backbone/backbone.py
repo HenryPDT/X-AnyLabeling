@@ -238,16 +238,16 @@ def build_backbone(args):
     else:
         raise NotImplementedError("Unknown backbone {}".format(args.backbone))
 
-    assert len(bb_num_channels) == len(
-        return_interm_indices
-    ), f"len(bb_num_channels) {len(bb_num_channels)} != len(return_interm_indices) {len(return_interm_indices)}"
+    assert len(bb_num_channels) == len(return_interm_indices), (
+        f"len(bb_num_channels) {len(bb_num_channels)} != len(return_interm_indices) {len(return_interm_indices)}"
+    )
 
     model = Joiner(backbone, position_embedding)
     model.num_channels = bb_num_channels
-    assert isinstance(
-        bb_num_channels, List
-    ), "bb_num_channels is expected to be a List but {}".format(
-        type(bb_num_channels)
+    assert isinstance(bb_num_channels, List), (
+        "bb_num_channels is expected to be a List but {}".format(
+            type(bb_num_channels)
+        )
     )
     # import ipdb; ipdb.set_trace()
     return model

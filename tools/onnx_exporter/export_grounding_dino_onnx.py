@@ -525,7 +525,9 @@ def export_onnx(model, output_file, is_quantize):
             1,
             14,
             0,
-        ), f"The onnx version must be large equal than '1.14.0', but got {onnx_version}"
+        ), (
+            f"The onnx version must be large equal than '1.14.0', but got {onnx_version}"
+        )
 
         model_output = osp.splitext(output_file)[0] + "_quant.onnx"
         print(f"Quantizing model and writing to {output_file}...")

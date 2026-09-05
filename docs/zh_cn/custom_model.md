@@ -309,16 +309,25 @@ class UNet(Model):
         results = []
         for i in range(c):
             # Skip the background label
-            if self.classes[i] == '_background_':
+            if self.classes[i] == "_background_":
                 continue
             # Get the category index of each pixel for the first batch by adding [0].
             mask = outputs[0] == i
             # Rescaled to original shape
-            mask_resized = cv2.resize(mask.astype(np.uint8), (image_width, image_height))
+            mask_resized = cv2.resize(
+                mask.astype(np.uint8), (image_width, image_height)
+            )
             # Get the contours
-            contours, _ = cv2.findContours(mask_resized, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(
+                mask_resized, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
             # Append the contours along with their respective class labels
-            results.append((self.classes[i], [np.squeeze(contour).tolist() for contour in contours]))
+            results.append(
+                (
+                    self.classes[i],
+                    [np.squeeze(contour).tolist() for contour in contours],
+                )
+            )
         return results
 
     def predict_shapes(self, image, image_path=None):

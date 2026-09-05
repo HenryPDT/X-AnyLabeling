@@ -17,7 +17,6 @@ from anylabeling.views.labeling.label_converter import (
 
 
 class TestLabelConverterPoseConfig(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
 
@@ -63,7 +62,6 @@ class TestLabelConverterPoseConfig(unittest.TestCase):
 
 
 class TestLabelConverterPoseExport(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
@@ -176,7 +174,6 @@ class TestLabelConverterPoseExport(unittest.TestCase):
 
 
 class TestLabelConverterObbBounds(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
         self.classes_file = os.path.join(self.temp_dir, "classes.txt")
@@ -232,7 +229,6 @@ class TestLabelConverterObbBounds(unittest.TestCase):
 
 
 class TestLabelConverterYoloExport(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)

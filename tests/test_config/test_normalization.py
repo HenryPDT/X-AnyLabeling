@@ -14,6 +14,7 @@ def _inject_module(name, module):
         sys.modules[name] = module
         INSERTED_MODULES.append(name)
 
+
 fake_anylabeling = types.ModuleType("anylabeling")
 fake_anylabeling_configs = types.ModuleType("anylabeling.configs")
 fake_anylabeling.configs = fake_anylabeling_configs
@@ -48,7 +49,6 @@ for module_name in INSERTED_MODULES:
 
 
 class TestConfigNormalization(unittest.TestCase):
-
     def test_normalize_legacy_keys_and_shortcuts(self):
         user_config = {
             "epsilon": 8.5,

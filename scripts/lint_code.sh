@@ -15,4 +15,9 @@ else
     exit 1
 fi
 
-${RUFF_CMD} format .
+if [ $# -eq 0 ]; then
+    ${RUFF_CMD} check .
+    ${RUFF_CMD} format --check .
+else
+    ${RUFF_CMD} check "$@"
+fi

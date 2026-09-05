@@ -22,7 +22,6 @@ except Exception:
     SCHEMA_AVAILABLE, "Settings schema dependencies are unavailable"
 )
 class TestSettingsSchema(unittest.TestCase):
-
     def test_field_count(self):
         self.assertEqual(len(SETTING_FIELDS), 136)
 

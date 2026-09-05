@@ -152,9 +152,9 @@ class Yolov8OnnxDetectionModel(DetectionModel):
         """
 
         # Confirm model is loaded
-        assert (
-            self.model is not None
-        ), "Model is not loaded, load it by calling .load_model()"
+        assert self.model is not None, (
+            "Model is not loaded, load it by calling .load_model()"
+        )
 
         prediction_result = self.model.inference(image)
 

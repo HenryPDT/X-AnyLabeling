@@ -19,7 +19,6 @@ from anylabeling.views.labeling.utils.general import (
 
 
 class TestIsRectangle(unittest.TestCase):
-
     def test_normal_rectangle(self):
         points = [[0, 0], [1000, 0], [1000, 1], [0, 1]]
         self.assertEqual(is_possible_rectangle(points), True)

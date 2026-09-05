@@ -15,7 +15,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for label loop review tests"
 )
 class TestLabelLoopReview(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:
@@ -43,9 +42,7 @@ class TestLabelLoopReview(unittest.TestCase):
         shapes = [first, deleted, last]
         canvas_shapes = [first, added, last]
 
-        index, shape = _find_next_label_loop_shape(
-            shapes, 1, canvas_shapes
-        )
+        index, shape = _find_next_label_loop_shape(shapes, 1, canvas_shapes)
 
         self.assertEqual(index, 2)
         self.assertIs(shape, last)
@@ -93,9 +90,9 @@ class TestLabelLoopReview(unittest.TestCase):
         popup.show_popup(child, popup_height=36, top_offset=24)
 
         origin = child.mapToGlobal(QtCore.QPoint(0, 0))
-        expected_x = origin.x() + (
-            child.width() - popup.sizeHint().width()
-        ) // 2
+        expected_x = (
+            origin.x() + (child.width() - popup.sizeHint().width()) // 2
+        )
         self.assertEqual(popup.label.text(), "Reviewing 2 / 3")
         self.assertIsNotNone(popup.icon_label)
         self.assertFalse(popup.icon_label.pixmap().isNull())

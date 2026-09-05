@@ -63,8 +63,9 @@ def scale_boxes(
         gain = min(
             img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1]
         )  # gain  = old / new
-        pad = round((img1_shape[1] - img0_shape[1] * gain) / 2 - 0.1), round(
-            (img1_shape[0] - img0_shape[0] * gain) / 2 - 0.1
+        pad = (
+            round((img1_shape[1] - img0_shape[1] * gain) / 2 - 0.1),
+            round((img1_shape[0] - img0_shape[0] * gain) / 2 - 0.1),
         )  # wh padding
     else:
         gain = ratio_pad[0][0]
@@ -286,10 +287,14 @@ def non_max_suppression_v8(
     """
 
     # Checks
-    assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, \
+    assert 0 <= conf_thres <= 1, (
+        f"Invalid Confidence threshold {conf_thres}, \
         valid values are between 0.0 and 1.0"
-    assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, \
+    )
+    assert 0 <= iou_thres <= 1, (
+        f"Invalid IoU {iou_thres}, \
         valid values are between 0.0 and 1.0"
+    )
     if task == "seg" and nc == 0:
         raise ValueError("The value of nc must be set when the mode is 'seg'.")
     if isinstance(prediction, (list, tuple)):

@@ -61,9 +61,7 @@ def test_parse_det_db_params_reads_official_inference_yml(tmp_path):
         encoding="utf-8",
     )
 
-    assert PPOCRv6.get_det_db_params(
-        {"det_model_path": str(det_model)}
-    ) == {
+    assert PPOCRv6.get_det_db_params({"det_model_path": str(det_model)}) == {
         "det_db_thresh": 0.2,
         "det_db_box_thresh": 0.45,
         "det_db_unclip_ratio": 1.4,

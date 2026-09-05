@@ -348,10 +348,14 @@ def non_max_suppression_v5(
     """
 
     # Checks
-    assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, \
+    assert 0 <= conf_thres <= 1, (
+        f"Invalid Confidence threshold {conf_thres}, \
         valid values are between 0.0 and 1.0"
-    assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, \
+    )
+    assert 0 <= iou_thres <= 1, (
+        f"Invalid IoU {iou_thres}, \
         valid values are between 0.0 and 1.0"
+    )
     if task == "seg" and nc == 0:
         raise ValueError("The value of nc must be set when the mode is 'seg'.")
     if isinstance(prediction, (list, tuple)):
@@ -487,10 +491,14 @@ def non_max_suppression_v8(
     """
 
     # Checks
-    assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, \
+    assert 0 <= conf_thres <= 1, (
+        f"Invalid Confidence threshold {conf_thres}, \
         valid values are between 0.0 and 1.0"
-    assert 0 <= iou_thres <= 1, f"Invalid IoU {iou_thres}, \
+    )
+    assert 0 <= iou_thres <= 1, (
+        f"Invalid IoU {iou_thres}, \
         valid values are between 0.0 and 1.0"
+    )
     if task == "seg" and nc == 0:
         raise ValueError("The value of nc must be set when the mode is 'seg'.")
     if isinstance(prediction, (list, tuple)):
@@ -621,8 +629,10 @@ def non_max_suppression_end2end(
             - pose: (num_boxes, 6+nkpt*ndim) with columns [x1, y1, x2, y2, confidence, class, keypoints...]
     """
     # Checks
-    assert 0 <= conf_thres <= 1, f"Invalid Confidence threshold {conf_thres}, \
+    assert 0 <= conf_thres <= 1, (
+        f"Invalid Confidence threshold {conf_thres}, \
         valid values are between 0.0 and 1.0"
+    )
 
     if isinstance(prediction, (list, tuple)):
         prediction = prediction[0]  # select only inference output

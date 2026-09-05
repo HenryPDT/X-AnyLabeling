@@ -5,7 +5,8 @@ import json
 from PIL import Image
 import torch
 import random
-import os, sys
+import os
+import sys
 
 sys.path.append(os.path.dirname(sys.path[0]))
 

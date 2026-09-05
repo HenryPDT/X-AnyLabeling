@@ -67,8 +67,9 @@ class Preprocessing:
         )
 
         if scale_factor != 1.0:
-            new_height, new_width = round(height * scale_factor), round(
-                width * scale_factor
+            new_height, new_width = (
+                round(height * scale_factor),
+                round(width * scale_factor),
             )
             img = self.__rescale_img(img, (new_width, new_height))
 

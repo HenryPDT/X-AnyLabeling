@@ -3487,8 +3487,7 @@ class LabelingWidget(LabelDialog):
     def documentation(self):
         locale = "/zh-Hans" if self._config["language"] == "zh_CN" else ""
         url = (
-            f"https://xanylabeling.com{locale}/docs/"
-            "x-anylabeling/get_started"
+            f"https://xanylabeling.com{locale}/docs/x-anylabeling/get_started"
         )
         utils.general.open_url(url)
 
@@ -3741,6 +3740,32 @@ class LabelingWidget(LabelDialog):
         if items:
             self.unique_label_list.setCurrentItem(items[0])
 
+    def _sync_unique_label_item(self, label):
+        """Ensure a label exists in the unique label list."""
+        if hasattr(self, "unique_label_list"):
+            if not self.unique_label_list.find_items_by_label(label):
+                unique_label_item = (
+                    self.unique_label_list.create_item_from_label(label)
+                )
+                self.unique_label_list.addItem(unique_label_item)
+                rgb = self._get_rgb_by_label(label)
+                self.unique_label_list.set_item_label(
+                    unique_label_item, label, rgb, LABEL_OPACITY
+                )
+                self.unique_label_list.refresh_indices()
+
+    def _sync_attributes_panel_for_selection(self):
+        """Synchronize attributes panel with currently selected shapes."""
+        if not self.attributes:
+            return
+        if len(self.canvas.selected_shapes) == 1:
+            for idx, s in enumerate(self.canvas.shapes):
+                if s == self.canvas.selected_shapes[0]:
+                    self.update_attributes(idx)
+                    break
+        elif not self.canvas.selected_shapes:
+            self.hide_attributes_panel()
+
     def assign_label_to_shapes(self, shapes, new_label):
         """Assign a new label to one or more shapes with undo support."""
         if not shapes or not new_label:
@@ -3779,16 +3804,12 @@ class LabelingWidget(LabelDialog):
 
             item = self.label_list.find_item_by_shape(shape)
             if item is not None:
-                color = shape.fill_color.getRgb()[:3]
+                item.setText(
+                    _format_label_list_text(shape.label, shape.group_id)
+                )
                 if shape.group_id is None:
-                    item.setText(
-                        _format_label_list_text(shape.label, shape.group_id)
-                    )
+                    color = shape.fill_color.getRgb()[:3]
                     item.setBackground(QtGui.QColor(*color, LABEL_OPACITY))
-                else:
-                    item.setText(
-                        _format_label_list_text(shape.label, shape.group_id)
-                    )
             changed = True
 
         if changed:
@@ -3797,32 +3818,13 @@ class LabelingWidget(LabelDialog):
             ):
                 self.label_dialog.add_label_history(new_label)
 
-            if hasattr(self, "unique_label_list"):
-                if not self.unique_label_list.find_items_by_label(new_label):
-                    unique_label_item = (
-                        self.unique_label_list.create_item_from_label(
-                            new_label
-                        )
-                    )
-                    self.unique_label_list.addItem(unique_label_item)
-                    rgb = self._get_rgb_by_label(new_label)
-                    self.unique_label_list.set_item_label(
-                        unique_label_item, new_label, rgb, LABEL_OPACITY
-                    )
-                    self.unique_label_list.refresh_indices()
-
+            self._sync_unique_label_item(new_label)
             self.canvas.update()
             self.set_dirty()
             self._refresh_shape_filters()
             self._select_unique_label_item(new_label)
             self.update_crosshair_color(new_label)
-            if self.attributes and len(self.canvas.selected_shapes) == 1:
-                for idx, s in enumerate(self.canvas.shapes):
-                    if s == self.canvas.selected_shapes[0]:
-                        self.update_attributes(idx)
-                        break
-            elif self.attributes and not self.canvas.selected_shapes:
-                self.hide_attributes_panel()
+            self._sync_attributes_panel_for_selection()
             try:
                 self.status(
                     self.tr("Set label to '{label}'").format(label=new_label)
@@ -4939,8 +4941,10 @@ class LabelingWidget(LabelDialog):
                 if has_current_value:
                     set_current_combo_value(property_combo, current_value)
                 property_combo.currentIndexChanged.connect(
-                    lambda _, prop=property, combo=property_combo, shape_idx=shape_index: self.attribute_selection_changed(
-                        shape_idx, prop, combo
+                    lambda _, prop=property, combo=property_combo, shape_idx=shape_index: (
+                        self.attribute_selection_changed(
+                            shape_idx, prop, combo
+                        )
                     )
                 )
                 self.grid_layout.addWidget(
@@ -4952,8 +4956,8 @@ class LabelingWidget(LabelDialog):
                 if has_current_value:
                     property_line.setText(current_value_text)
                 property_line.textChanged.connect(
-                    lambda _, prop=property, line=property_line, shape_idx=shape_index: self.attribute_line_changed(
-                        shape_idx, prop, line
+                    lambda _, prop=property, line=property_line, shape_idx=shape_index: (
+                        self.attribute_line_changed(shape_idx, prop, line)
                     )
                 )
                 self.grid_layout.addWidget(property_line, row_counter, 0, 1, 2)
@@ -4967,8 +4971,10 @@ class LabelingWidget(LabelDialog):
                     update_shape.attributes[property] = options[0]
                     attributes_changed = True
                 property_combo.currentIndexChanged.connect(
-                    lambda _, prop=property, combo=property_combo, shape_idx=shape_index: self.attribute_selection_changed(
-                        shape_idx, prop, combo
+                    lambda _, prop=property, combo=property_combo, shape_idx=shape_index: (
+                        self.attribute_selection_changed(
+                            shape_idx, prop, combo
+                        )
                     )
                 )
                 self.grid_layout.addWidget(
@@ -5525,20 +5531,24 @@ class LabelingWidget(LabelDialog):
     def text_selection_changed(self, index):
         label = self.label_filter_combobox.text_box.itemText(index)
         self._sync_label_list_visibility(
-            lambda item: label in ["", item.shape().label]
-            and self.label_info.get(item.shape().label, {}).get(
-                "visible", True
+            lambda item: (
+                label in ["", item.shape().label]
+                and self.label_info.get(item.shape().label, {}).get(
+                    "visible", True
+                )
             )
         )
 
     def gid_selection_changed(self, index):
         gid = self.gid_filter_combobox.gid_box.itemText(index)
         self._sync_label_list_visibility(
-            lambda item: str(gid)
-            in (
-                ["-1", str(item.shape().group_id)]
-                if item.shape().group_id is not None
-                else ["-1"]
+            lambda item: (
+                str(gid)
+                in (
+                    ["-1", str(item.shape().group_id)]
+                    if item.shape().group_id is not None
+                    else ["-1"]
+                )
             )
         )
 
@@ -6131,7 +6141,7 @@ class LabelingWidget(LabelDialog):
                     self.update_navigator_shapes()
             else:
                 logger.warning(
-                    f"Shape associated with the hidden item was not found in label list, could not show."
+                    "Shape associated with the hidden item was not found in label list, could not show."
                 )
 
     def get_next_files(self, filename, num_files):

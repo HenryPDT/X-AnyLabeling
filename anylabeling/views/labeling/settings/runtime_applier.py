@@ -538,9 +538,7 @@ class SettingsRuntimeApplier:
             timeout = int(
                 self._widget._config["remote_server_settings"]["timeout"]
             )
-            model_config = (
-                self._widget.auto_labeling_widget.model_manager.loaded_model_config
-            )
+            model_config = self._widget.auto_labeling_widget.model_manager.loaded_model_config
             if model_config:
                 model_config["timeout"] = timeout
                 model = model_config.get("model")

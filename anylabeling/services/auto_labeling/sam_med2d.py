@@ -112,9 +112,10 @@ class SegmentAnythingONNX:
                 )  # bottom right
                 labels.append(2)
                 labels.append(3)
-        points, labels = np.array(points).astype(np.float32), np.array(
-            labels
-        ).astype(np.float32)
+        points, labels = (
+            np.array(points).astype(np.float32),
+            np.array(labels).astype(np.float32),
+        )
         return points, labels
 
     def apply_coords(self, coords, original_size, new_size):

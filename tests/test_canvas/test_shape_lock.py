@@ -19,7 +19,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for canvas shape lock tests"
 )
 class TestCanvasShapeLock(unittest.TestCase):
-
     def setUp(self):
         self.app = QtWidgets.QApplication.instance()
         if self.app is None:

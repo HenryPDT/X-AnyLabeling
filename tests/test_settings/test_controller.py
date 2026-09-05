@@ -19,7 +19,6 @@ except Exception:
     PYQT_AVAILABLE, "PyQt6 is required for settings controller tests"
 )
 class TestSettingsController(unittest.TestCase):
-
     def setUp(self):
         self.app = QtCore.QCoreApplication.instance()
         if self.app is None:
@@ -426,8 +425,9 @@ class TestSettingsController(unittest.TestCase):
         controller = SettingsController(
             config=config,
             apply_callback=lambda key, value: applied.append((key, value)),
-            save_callback=lambda payload: saved.append(copy.deepcopy(payload))
-            or True,
+            save_callback=lambda payload: (
+                saved.append(copy.deepcopy(payload)) or True
+            ),
             save_delay_ms=1000,
             defer_runtime_apply=True,
         )
@@ -464,8 +464,9 @@ class TestSettingsController(unittest.TestCase):
         controller = SettingsController(
             config=config,
             apply_callback=lambda key, value: applied.append((key, value)),
-            save_callback=lambda payload: saved.append(copy.deepcopy(payload))
-            or True,
+            save_callback=lambda payload: (
+                saved.append(copy.deepcopy(payload)) or True
+            ),
             defer_runtime_apply=True,
             preview_keys={"shape.line_width", "canvas.crosshair.width"},
         )
