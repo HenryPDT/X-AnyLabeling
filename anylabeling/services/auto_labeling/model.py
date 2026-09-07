@@ -278,19 +278,39 @@ class Model(QObject):
 
         # Model path is a local path
         if not model_path.startswith(("http://", "https://")):
-            # Relative path to executable or absolute path?
+            # If absolute path and exists
+            if os.path.isabs(model_path) and os.path.exists(model_path):
+                return model_path
+
+            # Candidate 1: relative to current working directory
             model_abs_path = os.path.abspath(model_path)
             if os.path.exists(model_abs_path):
                 return model_abs_path
 
-            # Relative path to config file?
-            config_file_path = model_config["config_file"]
-            config_folder = os.path.dirname(config_file_path)
-            model_abs_path = os.path.abspath(
-                os.path.join(config_folder, model_path)
-            )
-            if os.path.exists(model_abs_path):
-                return model_abs_path
+            # Candidate 2: relative to config file directory (if config is a physical file)
+            config_file_path = model_config.get("config_file", "")
+            if config_file_path and not config_file_path.startswith(":/"):
+                config_folder = os.path.dirname(config_file_path)
+                model_abs_path = os.path.abspath(
+                    os.path.join(config_folder, model_path)
+                )
+                if os.path.exists(model_abs_path):
+                    return model_abs_path
+
+            # Candidate 3: relative to project repository root
+            project_root = pathlib.Path(__file__).resolve().parents[3]
+            repo_path = os.path.abspath(os.path.join(project_root, model_path))
+            if os.path.exists(repo_path):
+                return repo_path
+
+            # Candidate 4: relative to user data directory
+            work_dir = get_work_directory()
+            for data_dir_name in ("xanylabeling_data", "anylabeling_data"):
+                data_path = os.path.abspath(
+                    os.path.join(work_dir, data_dir_name, model_path)
+                )
+                if os.path.exists(data_path):
+                    return data_path
 
             raise QCoreApplication.translate(
                 "Model", "Model path not found: {model_path}"

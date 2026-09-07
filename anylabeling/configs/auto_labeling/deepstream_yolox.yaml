@@ -1,0 +1,16 @@
+type: deepstream_det
+name: deepstream_yolox
+display_name: DeepStream YOLOX
+provider: DeepStream
+model_path: weights/yolox_s.onnx
+labelfile_path: weights/labels.txt
+model_color_format: 1
+net_scale_factor: 1.0
+offsets: [0.0, 0.0, 0.0]
+maintain_aspect_ratio: 1
+symmetric_padding: 0
+pad_value: 114
+cluster_mode: 2
+conf_threshold: 0.25
+iou_threshold: 0.45
+topk: 300

@@ -212,6 +212,8 @@ class AutoLabelingWidget(QWidget):
             self.button_skip_detection.setEnabled(enable)
             if hasattr(self, "button_sahi"):
                 self.button_sahi.setEnabled(enable)
+            if hasattr(self, "button_model_config"):
+                self.button_model_config.setEnabled(enable)
             self.upn_select_combobox.setEnabled(enable)
             self.gd_select_combobox.setEnabled(enable)
             self.florence2_select_combobox.setEnabled(enable)
@@ -442,6 +444,22 @@ class AutoLabelingWidget(QWidget):
             toolbar_layout = self.model_selection
             toolbar_layout.insertWidget(
                 toolbar_layout.count() - 1, self.button_sahi
+            )
+        except Exception:
+            pass
+
+        # --- Configuration for: button_model_config (programmatic, no .ui change) ---
+        self.button_model_config = QPushButton(self.tr("Config"), self)
+        self.button_model_config.setStyleSheet(get_normal_button_style())
+        self.button_model_config.setToolTip(
+            self.tr("Quick model & classes configuration")
+        )
+        self.button_model_config.clicked.connect(self.on_model_config_clicked)
+        self.button_model_config.hide()
+        try:
+            toolbar_layout = self.model_selection
+            toolbar_layout.insertWidget(
+                toolbar_layout.count() - 1, self.button_model_config
             )
         except Exception:
             pass
@@ -793,14 +811,26 @@ class AutoLabelingWidget(QWidget):
                     return
 
         if model_name == "load_custom_model":
-            # Open file dialog to select "config.yaml" file for model
+            # Open file dialog to select "config.yaml" or model weights (*.onnx)
             file_dialog = QFileDialog(self)
             file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-            file_dialog.setNameFilter("Config file (*.yaml)")
+            file_dialog.setNameFilter(
+                "Supported Files (*.yaml *.onnx);;Config file (*.yaml);;ONNX Model (*.onnx);;All Files (*)"
+            )
 
             if file_dialog.exec():
-                config_file = file_dialog.selectedFiles()[0]
-                self.load_custom_model_config(config_file)
+                selected_file = file_dialog.selectedFiles()[0]
+                if selected_file.lower().endswith(".onnx"):
+                    from anylabeling.views.labeling.widgets.model_config_dialog import (
+                        ModelConfigDialog,
+                    )
+
+                    dialog = ModelConfigDialog(
+                        parent=self, model_path=selected_file
+                    )
+                    dialog.exec()
+                else:
+                    self.load_custom_model_config(selected_file)
 
             return
 
@@ -1175,9 +1205,15 @@ class AutoLabelingWidget(QWidget):
             self.update_groundingdino_mode_ui()
         elif normalized_type == "remoteserver":
             self.update_remote_server_mode_ui()
-        elif normalized_type == "segmentanything3":
+        elif (
+            normalized_type in ("segmentanything3", "deepstreamdet")
+            or "containment_threshold" in model_config
+        ):
+            default_containment = (
+                0.5 if normalized_type == "segmentanything3" else 0.0
+            )
             self.edit_containment.setValue(
-                model_config.get("containment_threshold", 0.5)
+                model_config.get("containment_threshold", default_containment)
             )
             self.on_containment_value_changed(self.edit_containment.value())
             self._set_containment_keep_mode(
@@ -1308,6 +1344,18 @@ class AutoLabelingWidget(QWidget):
                 self.button_sahi.show()
             else:
                 self.button_sahi.hide()
+        # Model config button is programmatic: show for deepstream_det or custom models
+        if hasattr(self, "button_model_config"):
+            mtype = str(model_config.get("type", "")).lower().replace("_", "")
+            mname = str(model_config.get("name", "")).lower()
+            is_custom = model_config.get(
+                "is_custom_model", False
+            ) or mname.startswith("_custom_")
+            is_deepstream = mtype == "deepstreamdet"
+            if is_deepstream or is_custom:
+                self.button_model_config.show()
+            else:
+                self.button_model_config.hide()
         self._update_model_selection_scroll_area_height()
 
     def hide_labeling_widgets(self):
@@ -1338,6 +1386,7 @@ class AutoLabelingWidget(QWidget):
             "button_set_api_token",
             "button_classes_filter",
             "button_sahi",
+            "button_model_config",
             "button_reset_tracker",
             "upn_select_combobox",
             "gd_select_combobox",
@@ -1538,6 +1587,32 @@ class AutoLabelingWidget(QWidget):
                 parent_cfg["sahi_overlap_ratio"] = overlap
         except Exception as exc:
             logger.debug(f"on_sahi_params_clicked config save skipped: {exc}")
+
+    def on_model_config_clicked(self):
+        """Open the Model Configuration Dialog for the currently loaded model."""
+        loaded = getattr(self.model_manager, "loaded_model_config", None) or {}
+        config_file = loaded.get("config_file")
+        if not config_file:
+            name = loaded.get("name")
+            if name and name in self.model_info:
+                config_file = self.model_info[name].get("config_path")
+
+        model_path = loaded.get("model_path")
+        labelfile_path = loaded.get("labelfile_path")
+        display_name = loaded.get("display_name")
+
+        from anylabeling.views.labeling.widgets.model_config_dialog import (
+            ModelConfigDialog,
+        )
+
+        dialog = ModelConfigDialog(
+            parent=self,
+            config_file=config_file,
+            model_path=model_path,
+            labelfile_path=labelfile_path,
+            display_name=display_name,
+        )
+        dialog.exec()
 
     def apply_sahi_config_to_model(self):
         """Apply saved SAHI config to freshly loaded SAHI model.
@@ -2051,15 +2126,16 @@ class AutoLabelingWidget(QWidget):
     def _inject_client_side_iou_widgets(
         self, model_id, model_info, widgets_config
     ):
-        """Add client-side SAM3 cleanup controls into the widget show path."""
+        """Add client-side cleanup controls into the widget show path."""
         from anylabeling.services.auto_labeling.remote_server import (
             _CLIENT_SIDE_CONTAINMENT_DEFAULT,
             _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT,
             _CLIENT_SIDE_IOU_DEFAULT,
+            is_client_side_containment_remote_model,
             is_client_side_iou_remote_model,
         )
 
-        if not is_client_side_iou_remote_model(model_id, model_info):
+        if not is_client_side_containment_remote_model(model_id, model_info):
             return widgets_config
 
         names = {
@@ -2074,19 +2150,25 @@ class AutoLabelingWidget(QWidget):
                 break
 
         injected = []
-        if "input_iou" not in names:
-            injected.append({"name": "input_iou", "value": None})
-        if "edit_iou" not in names:
-            injected.append(
-                {"name": "edit_iou", "value": _CLIENT_SIDE_IOU_DEFAULT}
-            )
+        if is_client_side_iou_remote_model(model_id, model_info):
+            if "input_iou" not in names:
+                injected.append({"name": "input_iou", "value": None})
+            if "edit_iou" not in names:
+                injected.append(
+                    {"name": "edit_iou", "value": _CLIENT_SIDE_IOU_DEFAULT}
+                )
+        default_containment = (
+            _CLIENT_SIDE_CONTAINMENT_DEFAULT
+            if is_client_side_iou_remote_model(model_id, model_info)
+            else 0.0
+        )
         if "input_containment" not in names:
             injected.append({"name": "input_containment", "value": None})
         if "edit_containment" not in names:
             injected.append(
                 {
                     "name": "edit_containment",
-                    "value": _CLIENT_SIDE_CONTAINMENT_DEFAULT,
+                    "value": default_containment,
                 }
             )
         if "containment_keep_combobox" not in names:
@@ -2105,32 +2187,38 @@ class AutoLabelingWidget(QWidget):
     def _enable_client_side_iou_for_remote_sam3(
         self, model_id, model_info=None
     ):
-        """Show client-side SAM3 cleanup controls; filtering runs locally."""
+        """Show client-side cleanup controls; filtering runs locally."""
         from anylabeling.services.auto_labeling.remote_server import (
             _CLIENT_SIDE_CONTAINMENT_DEFAULT,
             _CLIENT_SIDE_CONTAINMENT_KEEP_DEFAULT,
             _CLIENT_SIDE_IOU_DEFAULT,
+            is_client_side_containment_remote_model,
             is_client_side_iou_remote_model,
         )
 
-        if not is_client_side_iou_remote_model(model_id, model_info):
+        if not is_client_side_containment_remote_model(model_id, model_info):
             return
 
-        self.input_iou.setVisible(True)
-        self.edit_iou.setVisible(True)
+        if is_client_side_iou_remote_model(model_id, model_info):
+            self.input_iou.setVisible(True)
+            self.edit_iou.setVisible(True)
+            self.input_iou.show()
+            self.edit_iou.show()
+            if self.edit_iou.value() <= 0:
+                self.edit_iou.setValue(_CLIENT_SIDE_IOU_DEFAULT)
+            self.on_iou_value_changed(self.edit_iou.value())
+
         self.input_containment.setVisible(True)
         self.edit_containment.setVisible(True)
         self.containment_keep_combobox.setVisible(True)
-        self.input_iou.show()
-        self.edit_iou.show()
         self.input_containment.show()
         self.edit_containment.show()
         self.containment_keep_combobox.show()
-        if self.edit_iou.value() <= 0:
-            self.edit_iou.setValue(_CLIENT_SIDE_IOU_DEFAULT)
-        if self.edit_containment.value() <= 0:
-            self.edit_containment.setValue(_CLIENT_SIDE_CONTAINMENT_DEFAULT)
-        self.on_iou_value_changed(self.edit_iou.value())
+        if is_client_side_iou_remote_model(model_id, model_info):
+            if self.edit_containment.value() <= 0:
+                self.edit_containment.setValue(
+                    _CLIENT_SIDE_CONTAINMENT_DEFAULT
+                )
         self.on_containment_value_changed(self.edit_containment.value())
         if self.containment_keep_combobox.currentData() is None:
             self._set_containment_keep_mode(

@@ -18,6 +18,8 @@
   config_file: ":/damo_yolo_s.yaml"
 - model_name: "damo_yolo_t-r20231001"
   config_file: ":/damo_yolo_t.yaml"
+- model_name: "deepstream_yolox"
+  config_file: ":/deepstream_yolox.yaml"
 - model_name: "deimv2_hgnetv2_n_coco-r20251001"
   config_file: ":/deimv2_hgnetv2_n_coco.yaml"
 - model_name: "deimv2_dinov3_s_coco-r20251001"

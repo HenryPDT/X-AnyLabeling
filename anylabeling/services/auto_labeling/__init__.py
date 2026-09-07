@@ -92,6 +92,7 @@ _CUSTOM_MODELS = [
     "ppocr_v5",
     "ppocr_v6",
     "deimv2",
+    "deepstream_det",
 ]
 
 
@@ -263,6 +264,7 @@ _AUTO_LABELING_CONF_MODELS = [
     "u_rtdetr",
     "yoloe",
     "grounding_sam2",
+    "deepstream_det",
 ]
 
 
@@ -310,6 +312,7 @@ _AUTO_LABELING_IOU_MODELS = [
     "yolo26_pose_track",
     "yoloe",
     "dfine_seg",
+    "deepstream_det",
 ]
 
 
@@ -376,6 +379,7 @@ _AUTO_LABELING_PRESERVE_EXISTING_ANNOTATIONS_STATE_MODELS = [
     "u_rtdetr",
     "yoloe",
     "segment_anything_2_video",
+    "deepstream_det",
 ]
 
 

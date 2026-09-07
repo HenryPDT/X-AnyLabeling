@@ -184,5 +184,81 @@ class TestRemoteServerImageDimensions(unittest.TestCase):
         self.assertEqual(max(ys), 1350.0)
 
 
+class TestRemoteServerClientSideContainment(unittest.TestCase):
+    def test_is_client_side_containment_remote_model(self):
+        from anylabeling.services.auto_labeling.remote_server import (
+            is_client_side_containment_remote_model,
+        )
+
+        self.assertTrue(
+            is_client_side_containment_remote_model("segment_anything_3")
+        )
+        self.assertTrue(
+            is_client_side_containment_remote_model("deepstream_det_yolox")
+        )
+        self.assertTrue(
+            is_client_side_containment_remote_model(
+                "custom_det",
+                {
+                    "widgets": [
+                        {"name": "edit_conf"},
+                        {"name": "edit_iou"},
+                    ]
+                },
+            )
+        )
+        self.assertFalse(
+            is_client_side_containment_remote_model("classification_model", {})
+        )
+
+    def test_apply_client_side_containment_cleanup(self):
+        from PyQt6.QtCore import QPointF
+        from anylabeling.views.labeling.shape import Shape
+
+        with patch(
+            "anylabeling.services.auto_labeling.model.get_config",
+            return_value={"remote_server_settings": {}},
+        ):
+            model = RemoteServer(
+                {
+                    "type": "remote_server",
+                    "display_name": "Remote Server",
+                    "timeout": 30,
+                },
+                Mock(),
+            )
+        model.current_model_id = "deepstream_det_test"
+        model.containment_threshold = 0.8
+        model.containment_keep = "area"
+
+        outer = Shape(label="car", score=0.8)
+        outer.points = [
+            QPointF(0, 0),
+            QPointF(100, 0),
+            QPointF(100, 100),
+            QPointF(0, 100),
+        ]
+        outer.shape_type = "rectangle"
+
+        inner = Shape(label="car", score=0.95)
+        inner.points = [
+            QPointF(10, 10),
+            QPointF(90, 10),
+            QPointF(90, 90),
+            QPointF(10, 90),
+        ]
+        inner.shape_type = "rectangle"
+
+        # When containment_threshold > 0: inner is suppressed
+        cleaned = model._apply_client_side_cleanup([outer, inner])
+        self.assertEqual(len(cleaned), 1)
+        self.assertEqual(cleaned[0], outer)
+
+        # When containment_threshold == 0: no suppression
+        model.containment_threshold = 0.0
+        not_cleaned = model._apply_client_side_cleanup([outer, inner])
+        self.assertEqual(len(not_cleaned), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

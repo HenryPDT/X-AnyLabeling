@@ -43,6 +43,26 @@ def is_client_side_iou_remote_model(model_id, model_info=None):
     return False
 
 
+def is_client_side_containment_remote_model(model_id, model_info=None):
+    """Return True if remote model supports client-side containment cleanup."""
+    if is_client_side_iou_remote_model(model_id, model_info):
+        return True
+    if not model_id:
+        return False
+    mid = str(model_id).lower()
+    if "deepstream" in mid:
+        return True
+    info = model_info or {}
+    mtype = str(info.get("type", "")).lower()
+    if "deepstream" in mtype:
+        return True
+    widgets = info.get("widgets", [])
+    widget_names = [w.get("name") for w in widgets if isinstance(w, dict)]
+    if "edit_conf" in widget_names and "edit_iou" in widget_names:
+        return True
+    return False
+
+
 class RemoteServer(Model):
     class Meta:
         required_config_names = [
@@ -325,22 +345,38 @@ class RemoteServer(Model):
 
     def _apply_client_side_cleanup(self, shapes):
         """Apply client-side NMS and containment cleanup for supported models."""
-        if not self.uses_client_side_iou_nms():
-            return shapes
-        shapes_before_nms = len(shapes)
-        shapes = apply_class_agnostic_shape_nms(
-            shapes,
-            self.iou_threshold,
-            containment_threshold=self.containment_threshold,
-            containment_keep=self.containment_keep,
-        )
-        logger.info(
-            "Remote SAM3 client-side cleanup | "
-            f"iou={self.iou_threshold:.4f} | "
-            f"contain={self.containment_threshold:.4f}/"
-            f"{self.containment_keep} | "
-            f"shapes={shapes_before_nms}->{len(shapes)}"
-        )
+        if self.uses_client_side_iou_nms():
+            shapes_before_nms = len(shapes)
+            shapes = apply_class_agnostic_shape_nms(
+                shapes,
+                self.iou_threshold,
+                containment_threshold=self.containment_threshold,
+                containment_keep=self.containment_keep,
+            )
+            logger.info(
+                "Remote client-side cleanup | "
+                f"iou={self.iou_threshold:.4f} | "
+                f"contain={self.containment_threshold:.4f}/"
+                f"{self.containment_keep} | "
+                f"shapes={shapes_before_nms}->{len(shapes)}"
+            )
+        elif self.containment_threshold > 0 and len(shapes) > 1:
+            from anylabeling.views.labeling.utils.shape_geometry import (
+                apply_same_label_containment_nms,
+            )
+
+            shapes_before = len(shapes)
+            shapes = apply_same_label_containment_nms(
+                shapes,
+                self.containment_threshold,
+                keep_mode=self.containment_keep,
+            )
+            logger.info(
+                "Remote client-side containment cleanup | "
+                f"contain={self.containment_threshold:.4f}/"
+                f"{self.containment_keep} | "
+                f"shapes={shapes_before}->{len(shapes)}"
+            )
         return shapes
 
     @staticmethod
