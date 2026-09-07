@@ -3881,6 +3881,45 @@ class LabelingWidget(LabelDialog):
         )
 
     # General
+    def _is_mid_stroke(self) -> bool:
+        """Return True while a polygon/line stroke or magic-wand is active."""
+        try:
+            return getattr(self.canvas, "current", None) is not None or bool(
+                getattr(self.canvas, "_magic_wand_active", False)
+            )
+        except Exception:
+            return False
+
+    def _unlocked_shapes_from_label_list(self):
+        """Return unlocked shapes selected in the label list (never raises)."""
+        try:
+            label_list = getattr(self, "label_list", None)
+            if label_list is None:
+                return []
+            return [
+                item.shape()
+                for item in (label_list.selected_items() or [])
+                if hasattr(item, "shape")
+                and item.shape() is not None
+                and getattr(item.shape(), "locked", False) is not True
+            ]
+        except Exception:
+            return []
+
+    def _can_delete_shapes(self, shapes) -> bool:
+        """Return True if the given shapes can be deleted."""
+        if not shapes:
+            return False
+        try:
+            group_shapes = self.canvas._active_group_shapes()
+        except Exception:
+            group_shapes = []
+        has_locked = any(getattr(s, "locked", False) is True for s in shapes)
+        has_unlocked = any(
+            getattr(s, "locked", False) is not True for s in shapes
+        )
+        return has_unlocked and not (group_shapes and has_locked)
+
     def toggle_drawing_sensitive(self, drawing=True):
         """Toggle drawing sensitive.
 
@@ -3889,7 +3928,20 @@ class LabelingWidget(LabelDialog):
         self.actions.edit_mode.setEnabled(not drawing)
         self.actions.undo_last_point.setEnabled(drawing)
         self.actions.undo.setEnabled(not drawing)
-        self.actions.delete.setEnabled(not drawing)
+        is_mid_stroke = self._is_mid_stroke()
+        is_brush = bool(getattr(self.canvas, "is_brush_mode", False))
+        has_selection = False
+        try:
+            if not is_brush:
+                has_selection = bool(self._unlocked_shapes_from_label_list())
+        except Exception:
+            has_selection = False
+        # Don't enable Delete mid-stroke even if the label list has focus;
+        # the bootstrap in delete_selected_shape/shape_selection_changed
+        # stays locked-aware.
+        self.actions.delete.setEnabled(
+            (not drawing) or (has_selection and not is_mid_stroke)
+        )
         self.actions.union_selection.setEnabled(not drawing)
         self.update_labeling_instruction()
 
@@ -4071,19 +4123,32 @@ class LabelingWidget(LabelDialog):
 
     def handle_digit_shortcut(self, digit_num):
         """Handle numeric key (1-9, 0) shortcut press."""
-        # Do not hijack mid-draw polygon/line strokes
-        try:
-            if getattr(self.canvas, "drawing", lambda: False)():
-                return
-        except Exception:
-            pass
+        # Do not hijack active drawing stroke in progress
+        if self._is_mid_stroke():
+            return
         quick_digit_labels = self._config.get("quick_digit_labels", True)
         if not quick_digit_labels:
             self.create_digit_mode(digit_num)
             return
 
-        # Case 1: Shapes are selected on the canvas -> Reclassify selected shape(s)
+        # Case 1: Shapes are selected on canvas or label list -> Reclassify selected shape(s)
         selected_shapes = getattr(self.canvas, "selected_shapes", [])
+        if not selected_shapes:
+            selected_shapes = self._unlocked_shapes_from_label_list()
+            # Fall back to raw selection (locked included) so locked shapes
+            # still resolve to “no reclass” rather than “set active label”.
+            if not selected_shapes and hasattr(self, "label_list"):
+                try:
+                    items = self.label_list.selected_items() or []
+                    raw = [
+                        item.shape()
+                        for item in items
+                        if hasattr(item, "shape") and item.shape() is not None
+                    ]
+                    if raw:
+                        selected_shapes = raw
+                except Exception:
+                    pass
         if selected_shapes:
             target_label = self._get_target_label_for_digit(digit_num)
             if target_label:
@@ -5488,11 +5553,14 @@ class LabelingWidget(LabelDialog):
         same_type = (
             len(set(shape.shape_type for shape in selected_shapes)) <= 1
         )
-        has_locked = any(shape.locked for shape in selected_shapes)
-        has_unlocked = any(not shape.locked for shape in selected_shapes)
-        group_shapes = self.canvas._active_group_shapes()
+        has_locked = any(
+            getattr(s, "locked", False) is True for s in selected_shapes
+        )
+        can_del_fn = getattr(self, "_can_delete_shapes", None)
         self.actions.delete.setEnabled(
-            has_unlocked and not (group_shapes and has_locked)
+            can_del_fn(selected_shapes)
+            if callable(can_del_fn)
+            else LabelingWidget._can_delete_shapes(self, selected_shapes)
         )
         self.actions.duplicate.setEnabled(n_selected)
         self.actions.copy.setEnabled(n_selected)
@@ -5633,6 +5701,23 @@ class LabelingWidget(LabelDialog):
             and self._config.get("labels")
         ):
             for lbl in self._config["labels"]:
+                if lbl and lbl not in classes:
+                    classes.append(lbl)
+        if (
+            not classes
+            and hasattr(self, "canvas")
+            and hasattr(self.canvas, "shapes")
+        ):
+            for s in getattr(self.canvas, "shapes", None) or []:
+                lbl = getattr(s, "label", None)
+                if lbl and lbl not in classes:
+                    classes.append(lbl)
+        if (
+            not classes
+            and hasattr(self, "label_dialog")
+            and hasattr(self.label_dialog, "label_hist")
+        ):
+            for lbl in getattr(self.label_dialog, "label_hist", None) or []:
                 if lbl and lbl not in classes:
                     classes.append(lbl)
         return classes
@@ -5962,14 +6047,36 @@ class LabelingWidget(LabelDialog):
             return
         if self.canvas.is_brush_mode:
             return
-        if self.canvas.editing():
-            selected_shapes = []
-            for item in self.label_list.selected_items():
+        selected_shapes = []
+        for item in self.label_list.selected_items():
+            if hasattr(item, "shape") and item.shape() is not None:
                 selected_shapes.append(item.shape())
+
+        if self.canvas.editing():
             if selected_shapes:
                 self.canvas.select_shapes(selected_shapes)
             else:
                 self.canvas.deselect_shape()
+        else:
+            if not self._is_mid_stroke():
+                if selected_shapes:
+                    self.canvas.select_shapes(selected_shapes)
+                else:
+                    self.canvas.deselect_shape()
+                if hasattr(self, "actions") and hasattr(
+                    self.actions, "delete"
+                ):
+                    # Mirror shape_selection_changed: select_shapes() above
+                    # already emitted the correct state; this only covers
+                    # harnesses without the signal connected.
+                    can_del_fn = getattr(self, "_can_delete_shapes", None)
+                    self.actions.delete.setEnabled(
+                        can_del_fn(selected_shapes)
+                        if callable(can_del_fn)
+                        else LabelingWidget._can_delete_shapes(
+                            self, selected_shapes
+                        )
+                    )
 
     def label_item_changed(self, item):
         shape = item.shape()
@@ -7353,6 +7460,11 @@ class LabelingWidget(LabelDialog):
             self, title, f"<p><b>{title}</b></p>{message}"
         )
 
+    def warning_message(self, title, message):
+        return QtWidgets.QMessageBox.warning(
+            self, title, f"<p><b>{title}</b></p>{message}"
+        )
+
     def current_path(self):
         return osp.dirname(str(self.filename)) if self.filename else "."
 
@@ -7381,8 +7493,63 @@ class LabelingWidget(LabelDialog):
                 for action in self.actions.on_shapes_present:
                     action.setEnabled(False)
 
+    def _fully_selected_group_shapes(self):
+        """Return the whole group if the selection covers exactly one group.
+
+        Fallback for paths (e.g. label-list bootstrap) where
+        ``canvas.select_shapes()`` already reset ``_selected_group_id``,
+        making ``_active_group_shapes()`` blind. Returns [] otherwise.
+        """
+        try:
+            if not getattr(self.canvas, "show_groups", False):
+                return []
+            by_gid = {}
+            for s in list(getattr(self.canvas, "selected_shapes", []) or []):
+                gid = getattr(s, "group_id", None)
+                if gid is not None:
+                    by_gid.setdefault(gid, []).append(s)
+            if len(by_gid) != 1:
+                return []
+            gid, sel = next(iter(by_gid.items()))
+            full = self.canvas._group_shapes(gid)
+            if (
+                len(full) > 1
+                and len(sel) == len(full)
+                and all(any(s is f for s in sel) for f in full)
+            ):
+                return list(full)
+        except Exception:
+            pass
+        return []
+
     def delete_selected_shape(self):
+        if not self.canvas.selected_shapes and hasattr(self, "label_list"):
+            try:
+                # Don't hijack brush target selection.
+                if getattr(self.canvas, "is_brush_mode", False):
+                    pass
+                elif not self._is_mid_stroke():
+                    selected_items = self.label_list.selected_items()
+                    if selected_items:
+                        shapes = self._unlocked_shapes_from_label_list()
+                        if shapes:
+                            self.canvas.select_shapes(shapes)
+                            # select_shapes() emits; mirror state for
+                            # callers without the signal connected
+                            # (e.g. unit-test harness).
+                            self.canvas.selected_shapes = list(shapes)
+            except Exception:
+                pass
+        if not self.canvas.selected_shapes:
+            # Locked-only (or empty) selection: nothing deletable. Return
+            # without touching labels or the dirty flag.
+            return
+
         group_shapes = self.canvas._active_group_shapes()
+        if not group_shapes:
+            # select_shapes() above resets _selected_group_id, so detect a
+            # fully-selected group explicitly for the label-list path.
+            group_shapes = self._fully_selected_group_shapes()
         if group_shapes:
             answer = QtWidgets.QMessageBox.warning(
                 self,

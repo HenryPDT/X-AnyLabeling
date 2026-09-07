@@ -69,7 +69,7 @@ class ColoredFormatter(logging.Formatter):
         def colored(text, color):
             return termcolor.colored(text, color=color, attrs={"bold": True})
 
-        message = record.msg
+        message = record.getMessage()
         if isinstance(message, str):
             message = strip_emoji_prefix(message)
         record.levelname2 = colored(

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
-from PyQt6 import QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QProgressDialog,
     QPushButton,
@@ -27,9 +28,11 @@ from anylabeling.services.annotation_diagnostics import (
     AnnotationDiagnosticsScanner,
     ScanIssue,
     ScanReport,
+    apply_shape_modifications,
     clamp_out_of_bounds_shapes,
     deduplicate_dataset_shapes,
     export_report_to_file,
+    get_label_file_path,
     move_empty_images,
     purge_micro_shapes,
 )
@@ -115,6 +118,7 @@ class MetricCard(QFrame):
         t = get_theme()
         val_color = accent_color or t["text"]
 
+        self.value = initial_value
         self.val_label = QLabel(str(initial_value))
         self.val_label.setStyleSheet(
             f"font-size: 20px; font-weight: bold; color: {val_color};"
@@ -131,6 +135,7 @@ class MetricCard(QFrame):
         layout.addWidget(self.title_label)
 
     def set_value(self, value: int | str) -> None:
+        self.value = value
         self.val_label.setText(str(value))
 
 
@@ -143,9 +148,11 @@ class AnnotationDiagnosticsDialog(QDialog):
         self.scanner = AnnotationDiagnosticsScanner()
         self.report = ScanReport()
         self.filtered_issues: List[ScanIssue] = []
+        self._sort_col: Optional[int] = None
+        self._sort_ascending: bool = True
 
         self.init_ui()
-        self.run_scan(silent=False)
+        self.run_scan(silent=True)
 
     def init_ui(self) -> None:
         self.setWindowTitle(
@@ -241,7 +248,12 @@ class AnnotationDiagnosticsDialog(QDialog):
         self.search_input.setPlaceholderText(
             self.tr("Filter by filename, label, or details...")
         )
-        self.search_input.textChanged.connect(self.apply_filter)
+        # Debounce typing like the review gallery (was per-keystroke freeze).
+        self.search_timer = QtCore.QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.setInterval(200)
+        self.search_timer.timeout.connect(self.apply_filter)
+        self.search_input.textChanged.connect(self.search_timer.start)
         filter_layout.addWidget(self.search_input, stretch=1)
 
         self.lbl_count = QLabel(self)
@@ -266,6 +278,9 @@ class AnnotationDiagnosticsDialog(QDialog):
         )
         self.table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.table.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
@@ -292,6 +307,19 @@ class AnnotationDiagnosticsDialog(QDialog):
             6, QHeaderView.ResizeMode.ResizeToContents
         )
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        self.table.horizontalHeader().sectionClicked.connect(
+            self.on_header_clicked
+        )
+        self.table.horizontalHeader().setToolTip(
+            self.tr("Click a column header to sort; click again to reverse")
+        )
+        self.table.setToolTip(
+            self.tr("Right-click for Jump / Gallery / Delete (Del)")
+        )
+        self.table.installEventFilter(self)
+        self.table.viewport().installEventFilter(self)
         main_layout.addWidget(self.table, stretch=1)
 
         # 4. Actions Row
@@ -444,18 +472,98 @@ class AnnotationDiagnosticsDialog(QDialog):
 
         return True
 
+    def on_header_clicked(self, col: int) -> None:
+        """Sort issues table by clicked column header."""
+        if self._sort_col == col:
+            self._sort_ascending = not self._sort_ascending
+        else:
+            self._sort_col = col
+            self._sort_ascending = True
+
+        header = self.table.horizontalHeader()
+        header.setSortIndicatorShown(True)
+        order = (
+            Qt.SortOrder.AscendingOrder
+            if self._sort_ascending
+            else Qt.SortOrder.DescendingOrder
+        )
+        header.setSortIndicator(col, order)
+
+        self.filtered_issues = self._sort_issues_by_column(
+            self.filtered_issues, self._sort_col, self._sort_ascending
+        )
+        self._populate_table()
+
+    def _sort_issues_by_column(
+        self, issues: List[ScanIssue], col: int, ascending: bool
+    ) -> List[ScanIssue]:
+        rev = not ascending
+        if col == 0:
+            rank = {"error": 0, "warning": 1, "info": 2}
+            return sorted(
+                issues,
+                key=lambda x: rank.get((x.severity or "").lower(), 99),
+                reverse=rev,
+            )
+        if col == 1:
+            return sorted(
+                issues,
+                key=lambda x: (x.issue_type or "").lower(),
+                reverse=rev,
+            )
+        if col == 2:
+            return sorted(
+                issues,
+                key=lambda x: os.path.basename(x.image_path or "").lower(),
+                reverse=rev,
+            )
+        if col == 3:
+            return sorted(
+                issues,
+                key=lambda x: (
+                    x.shape_index if x.shape_index is not None else -1
+                ),
+                reverse=rev,
+            )
+        if col == 4:
+
+            def _get_lbl(x: ScanIssue) -> str:
+                if isinstance(x.shape_data, dict):
+                    return str(x.shape_data.get("label", "")).lower()
+                return ""
+
+            return sorted(issues, key=_get_lbl, reverse=rev)
+        if col == 5:
+            return sorted(
+                issues, key=lambda x: (x.details or "").lower(), reverse=rev
+            )
+        if col == 6:
+            return sorted(
+                issues, key=lambda x: (x.suggestion or "").lower(), reverse=rev
+            )
+        return issues
+
     def apply_filter(self) -> None:
         """Filter issues by severity, type, and search keyword."""
+        if hasattr(self, "search_timer") and self.search_timer.isActive():
+            self.search_timer.stop()
         sev_idx = self.combo_severity.currentIndex()
         sev_sel = ["All", "Errors", "Warnings", "Info"][sev_idx]
         type_sel = self.combo_type.currentData() or ""
         search_txt = self.search_input.text().strip().lower()
 
-        self.filtered_issues = [
+        filtered = [
             iss
             for iss in self.report.issues
             if self._matches_filter(iss, sev_sel, type_sel, search_txt)
         ]
+
+        if self._sort_col is not None:
+            self.filtered_issues = self._sort_issues_by_column(
+                filtered, self._sort_col, self._sort_ascending
+            )
+        else:
+            self.filtered_issues = filtered
 
         self.lbl_count.setText(
             self.tr("Showing %d of %d issues")
@@ -465,49 +573,63 @@ class AnnotationDiagnosticsDialog(QDialog):
 
     def _populate_table(self) -> None:
         """Populate QTableWidget with filtered issues."""
-        self.table.setRowCount(len(self.filtered_issues))
-        t = get_theme()
+        self.table.setUpdatesEnabled(False)
+        try:
+            self.table.setRowCount(len(self.filtered_issues))
+            t = get_theme()
 
-        for row_idx, issue in enumerate(self.filtered_issues):
-            # Severity item
-            sev_item = QTableWidgetItem(issue.severity.upper())
-            if issue.severity == "error":
-                sev_item.setForeground(QColor(t["error"]))
-            elif issue.severity == "warning":
-                sev_item.setForeground(QColor(t["warning"]))
-            else:
-                sev_item.setForeground(QColor(t["text_secondary"]))
-            self.table.setItem(row_idx, 0, sev_item)
+            for row_idx, issue in enumerate(self.filtered_issues):
+                # Severity item
+                sev = (issue.severity or "info").lower()
+                sev_item = QTableWidgetItem(sev.upper())
+                if sev == "error":
+                    sev_item.setForeground(QColor(t["error"]))
+                elif sev == "warning":
+                    sev_item.setForeground(QColor(t["warning"]))
+                else:
+                    sev_item.setForeground(QColor(t["text_secondary"]))
+                self.table.setItem(row_idx, 0, sev_item)
 
-            # Issue type
-            display_type = issue.issue_type.replace("_", " ").title()
-            self.table.setItem(row_idx, 1, QTableWidgetItem(display_type))
+                # Issue type
+                display_type = (
+                    (issue.issue_type or "").replace("_", " ").title()
+                )
+                self.table.setItem(row_idx, 1, QTableWidgetItem(display_type))
 
-            # Image filename
-            base_img = os.path.basename(issue.image_path)
-            self.table.setItem(row_idx, 2, QTableWidgetItem(base_img))
+                # Image filename
+                base_img = os.path.basename(issue.image_path or "")
+                self.table.setItem(row_idx, 2, QTableWidgetItem(base_img))
 
-            # Shape index
-            shape_idx_str = (
-                str(issue.shape_index + 1)
-                if issue.shape_index is not None
-                else "-"
-            )
-            self.table.setItem(row_idx, 3, QTableWidgetItem(shape_idx_str))
+                # Shape index
+                shape_idx_str = (
+                    str(issue.shape_index + 1)
+                    if issue.shape_index is not None
+                    else "-"
+                )
+                self.table.setItem(row_idx, 3, QTableWidgetItem(shape_idx_str))
 
-            # Class label
-            if isinstance(issue.shape_data, dict):
-                try:
-                    lbl_str = str(issue.shape_data.get("label", "-"))
-                except Exception:
+                # Class label
+                if isinstance(issue.shape_data, dict):
+                    try:
+                        lbl_str = str(issue.shape_data.get("label", "-"))
+                    except Exception:
+                        lbl_str = "-"
+                else:
                     lbl_str = "-"
-            else:
-                lbl_str = "-"
-            self.table.setItem(row_idx, 4, QTableWidgetItem(lbl_str))
+                self.table.setItem(row_idx, 4, QTableWidgetItem(lbl_str))
 
-            # Details & Suggestion
-            self.table.setItem(row_idx, 5, QTableWidgetItem(issue.details))
-            self.table.setItem(row_idx, 6, QTableWidgetItem(issue.suggestion))
+                # Details & Suggestion
+                self.table.setItem(
+                    row_idx, 5, QTableWidgetItem(issue.details or "")
+                )
+                self.table.setItem(
+                    row_idx, 6, QTableWidgetItem(issue.suggestion or "")
+                )
+        finally:
+            self.table.setUpdatesEnabled(True)
+
+        if len(self.filtered_issues) > 0 and self.table.currentRow() < 0:
+            self.table.selectRow(0)
 
     def _safe_reload_current_file(self) -> None:
         """Reload current file only if clean, else skip to avoid data loss."""
@@ -524,6 +646,28 @@ class AnnotationDiagnosticsDialog(QDialog):
         except Exception:
             pass
 
+    def _abort_if_main_dirty(self, touched: Set[str]) -> bool:
+        """Abort a disk write that would clobber unsaved main-window edits."""
+        try:
+            w = self._label_widget
+            if (
+                w is not None
+                and getattr(w, "filename", None) in touched
+                and getattr(w, "dirty", False)
+            ):
+                QMessageBox.warning(
+                    self,
+                    self.tr("Unsaved Changes"),
+                    self.tr(
+                        "The current file has unsaved changes in the main "
+                        "window. Save or discard them there first, then retry."
+                    ),
+                )
+                return True
+        except Exception:
+            pass
+        return False
+
     def on_cell_double_clicked(self, row: int, _col: int) -> None:
         """Double click row to navigate to image and highlight shape."""
         if (
@@ -536,6 +680,19 @@ class AnnotationDiagnosticsDialog(QDialog):
 
         issue = self.filtered_issues[row]
         if not os.path.isfile(issue.image_path):
+            return
+
+        # Do not clobber unsaved main-window edits with a navigation load.
+        try:
+            w = self._label_widget
+            if (
+                getattr(w, "filename", None) != issue.image_path
+                and getattr(w, "dirty", False)
+                and hasattr(w, "may_continue")
+                and not w.may_continue()
+            ):
+                return
+        except Exception:
             return
 
         # Revalidate stale index: match label/points if possible
@@ -560,6 +717,374 @@ class AnnotationDiagnosticsDialog(QDialog):
                     [shapes[issue.shape_index]]
                 )
 
+    def _get_selected_rows(self) -> List[int]:
+        """Return sorted unique row indices currently selected in the table.
+
+        Only real selections count: falling back to the current row would
+        delete row 0 after an explicit deselect.
+        """
+        rows = set()
+        selection_model = self.table.selectionModel()
+        if selection_model:
+            for idx in selection_model.selectedRows():
+                rows.add(idx.row())
+            if not rows:
+                for idx in selection_model.selectedIndexes():
+                    rows.add(idx.row())
+        return sorted([r for r in rows if 0 <= r < len(self.filtered_issues)])
+
+    def _get_selected_issues(self) -> List[ScanIssue]:
+        """Return list of ScanIssue objects corresponding to selected table rows."""
+        rows = self._get_selected_rows()
+        return [self.filtered_issues[r] for r in rows]
+
+    def show_context_menu(self, pos: QtCore.QPoint) -> None:
+        """Display right-click context menu for table row."""
+        row = self.table.rowAt(pos.y())
+        if row < 0 or row >= len(self.filtered_issues):
+            return
+
+        selected_rows = self._get_selected_rows()
+        if row not in selected_rows:
+            selected_rows = [row]
+
+        selected_issues = [self.filtered_issues[r] for r in selected_rows]
+        deletable_issues = [
+            iss for iss in selected_issues if iss.shape_index is not None
+        ]
+
+        menu = QMenu(self)
+        act_jump = menu.addAction(self.tr("Jump to Annotation"))
+        act_gallery = menu.addAction(self.tr("Review in Gallery..."))
+
+        act_delete = None
+        if deletable_issues:
+            menu.addSeparator()
+            if len(deletable_issues) == 1:
+                act_delete = menu.addAction(self.tr("Delete Shape (Del)"))
+            else:
+                act_delete = menu.addAction(
+                    self.tr("Delete %d Selected Shapes (Del)")
+                    % len(deletable_issues)
+                )
+
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen == act_jump:
+            self.on_cell_double_clicked(row, 0)
+        elif chosen == act_gallery:
+            self.open_review_gallery_for_issue(self.filtered_issues[row])
+        elif act_delete and chosen == act_delete:
+            self.delete_shapes_for_issues(deletable_issues)
+
+    def delete_shape_for_issue(self, issue: ScanIssue) -> None:
+        """Remove a single shape associated with this diagnostic issue."""
+        self.delete_shapes_for_issues([issue])
+
+    def _confirm_shape_deletion(self, deletable: List[ScanIssue]) -> bool:
+        """Confirm deletion; returns True when the user accepts."""
+        if len(deletable) == 1:
+            iss = deletable[0]
+            msg = self.tr(
+                "Are you sure you want to delete shape #%d from '%s'?"
+            ) % (
+                (iss.shape_index or 0) + 1,
+                os.path.basename(iss.image_path or ""),
+            )
+        else:
+            files_cnt = len({iss.image_path for iss in deletable})
+            msg = self.tr(
+                "Are you sure you want to delete %d shapes across %d file(s)?"
+            ) % (len(deletable), files_cnt)
+
+        ans = QMessageBox.question(
+            self,
+            self.tr("Delete Shape(s)"),
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return ans == QMessageBox.StandardButton.Yes
+
+    def _group_deletable_by_file(
+        self, deletable: List[ScanIssue]
+    ) -> Tuple[
+        Dict[str, Set[int]], Dict[str, Dict[int, str]], List[ScanIssue]
+    ]:
+        """Group deletable issues by label file with stale-guard labels."""
+        by_file: Dict[str, Set[int]] = {}
+        expected_by_file: Dict[str, Dict[int, str]] = {}
+        skipped: List[ScanIssue] = []
+        output_dir = self.get_output_dir()
+        for iss in deletable:
+            label_file = iss.label_file or get_label_file_path(
+                iss.image_path, output_dir=output_dir
+            )
+            if label_file and os.path.isfile(label_file):
+                by_file.setdefault(label_file, set()).add(iss.shape_index)
+                # Stale guard: verify on-disk label still matches scan time.
+                if isinstance(iss.shape_data, dict):
+                    exp = iss.shape_data.get("label")
+                    if isinstance(exp, str) and exp:
+                        expected_by_file.setdefault(label_file, {})[
+                            iss.shape_index
+                        ] = exp
+            else:
+                skipped.append(iss)
+        return by_file, expected_by_file, skipped
+
+    def _write_deletions(
+        self,
+        by_file: Dict[str, Set[int]],
+        expected_by_file: Dict[str, Dict[int, str]],
+    ) -> Tuple[Set[str], List[str]]:
+        """Apply one batched delete per label file; return (succeeded, failed)."""
+        succeeded: Set[str] = set()
+        failed: List[str] = []
+        for lf, del_indices in by_file.items():
+            ok = apply_shape_modifications(
+                label_file=lf,
+                deletions=del_indices,
+                reclasses={},
+                expected_labels=expected_by_file.get(lf) or None,
+            )
+            if ok:
+                succeeded.add(lf)
+            else:
+                failed.append(lf)
+        return succeeded, failed
+
+    def _report_deletion_outcome(
+        self, succeeded: Set[str], failed: List[str], skipped: List[ScanIssue]
+    ) -> bool:
+        """Show result boxes; returns False when nothing was deleted."""
+        if skipped and not succeeded and not failed:
+            QMessageBox.warning(
+                self,
+                self.tr("Warning"),
+                self.tr(
+                    "No matching annotation files found on disk; nothing was deleted."
+                ),
+            )
+            return False
+
+        if failed and not succeeded:
+            QMessageBox.critical(
+                self,
+                self.tr("Error"),
+                self.tr(
+                    "Failed to delete shapes from file(s): %s. "
+                    "Nothing was removed from the report (files may be stale or locked)."
+                )
+                % ", ".join(os.path.basename(p) for p in failed),
+            )
+            return False
+
+        if failed or skipped:
+            skipped_files = len({s.image_path for s in skipped})
+            QMessageBox.warning(
+                self,
+                self.tr("Partial Success"),
+                self.tr(
+                    "Deleted shapes from %d file(s); %d file(s) failed and "
+                    "%d issue(s) in %d file(s) were missing and kept in the report."
+                )
+                % (
+                    len(succeeded),
+                    len(failed),
+                    len(skipped),
+                    skipped_files,
+                ),
+            )
+        return True
+
+    def _remove_report_issues(
+        self, by_file: Dict[str, Set[int]], succeeded: Set[str]
+    ) -> List[ScanIssue]:
+        """Drop removed issues from the report; shift survivor indices.
+
+        Matches by (label_file, shape_index) key so sibling issues for the
+        same shape (e.g. micro + duplicate) don't orphan. Returns all
+        removed issues for KPI updates.
+        """
+        removed_keys = set()
+        for lf in succeeded:
+            for d in by_file[lf]:
+                removed_keys.add((lf, d))
+        output_dir = self.get_output_dir()
+        lf_cache: Dict[int, Optional[str]] = {}
+
+        def _lf_of(iss: ScanIssue) -> Optional[str]:
+            k = id(iss)
+            if k not in lf_cache:
+                lf_cache[k] = iss.label_file or get_label_file_path(
+                    iss.image_path, output_dir=output_dir
+                )
+            return lf_cache[k]
+
+        removed_issues = [
+            iss
+            for iss in self.report.issues
+            if (_lf_of(iss), iss.shape_index) in removed_keys
+        ]
+        removed_ids = {id(iss) for iss in removed_issues}
+        self.report.issues = [
+            iss for iss in self.report.issues if id(iss) not in removed_ids
+        ]
+
+        for lf in succeeded:
+            sorted_dels = sorted(by_file[lf])
+            for iss in self.report.issues:
+                if iss.shape_index is None:
+                    continue
+                if _lf_of(iss) != lf:
+                    continue
+                shift = sum(1 for d in sorted_dels if d < iss.shape_index)
+                if shift:
+                    iss.shape_index -= shift
+        return removed_issues
+
+    def _refresh_issue_cards(
+        self, unique_removed: int, removed_issues: List[ScanIssue]
+    ) -> None:
+        """Update KPI cards: total by unique shapes, per-type by issues."""
+        self.report.total_annotations = max(
+            0, self.report.total_annotations - unique_removed
+        )
+        for iss in removed_issues:
+            if iss.issue_type == "duplicate_shape":
+                self.report.duplicate_shapes_count = max(
+                    0, self.report.duplicate_shapes_count - 1
+                )
+            elif iss.issue_type == "micro_noise":
+                self.report.micro_shapes_count = max(
+                    0, self.report.micro_shapes_count - 1
+                )
+            elif iss.issue_type == "out_of_bounds":
+                self.report.out_of_bounds_count = max(
+                    0, self.report.out_of_bounds_count - 1
+                )
+            elif iss.issue_type in ("degenerate_geometry", "missing_label"):
+                self.report.corrupt_shapes_count = max(
+                    0, self.report.corrupt_shapes_count - 1
+                )
+
+        self.card_annotations.set_value(self.report.total_annotations)
+        self.card_duplicates.set_value(self.report.duplicate_shapes_count)
+        self.card_corrupt.set_value(
+            self.report.corrupt_shapes_count + self.report.out_of_bounds_count
+        )
+        self.card_micro.set_value(self.report.micro_shapes_count)
+
+    def delete_shapes_for_issues(self, issues: List[ScanIssue]) -> None:
+        """Remove shapes associated with diagnostic issues directly."""
+        deletable = [iss for iss in issues if iss.shape_index is not None]
+        if not deletable:
+            QMessageBox.information(
+                self,
+                self.tr("Cannot Delete"),
+                self.tr(
+                    "The selected diagnostic issue(s) are not associated with specific shape indices."
+                ),
+            )
+            return
+
+        if not self._confirm_shape_deletion(deletable):
+            return
+
+        if self._abort_if_main_dirty({iss.image_path for iss in deletable}):
+            return
+
+        by_file, expected_by_file, skipped = self._group_deletable_by_file(
+            deletable
+        )
+        succeeded, failed = self._write_deletions(by_file, expected_by_file)
+        if not self._report_deletion_outcome(succeeded, failed, skipped):
+            return
+
+        removed_issues = self._remove_report_issues(by_file, succeeded)
+        unique_removed = len(
+            {(lf, d) for lf in succeeded for d in by_file[lf]}
+        )
+        self._refresh_issue_cards(unique_removed, removed_issues)
+
+        self._safe_reload_current_file()
+        self.apply_filter()
+
+    def _handle_shortcut_key(self, event: QtGui.QKeyEvent) -> bool:
+        """Handle keyboard shortcuts in diagnostics table."""
+        if event.isAutoRepeat():
+            return False
+        fw = self.focusWidget()
+        if isinstance(
+            fw,
+            (
+                QLineEdit,
+                QtWidgets.QTextEdit,
+                QtWidgets.QPlainTextEdit,
+                QComboBox,
+                QtWidgets.QAbstractSpinBox,
+            ),
+        ):
+            return False
+        # Destructive shortcut: only fire from the table itself, never from
+        # focused buttons (Close/Re-Scan) or other controls.
+        if fw is not None and fw not in (
+            self,
+            self.table,
+            self.table.viewport(),
+        ):
+            return False
+
+        key = event.key()
+        if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            issues = self._get_selected_issues()
+            deletable = [iss for iss in issues if iss.shape_index is not None]
+            if deletable:
+                self.delete_shapes_for_issues(deletable)
+                return True
+            return False
+
+        return False
+
+    def eventFilter(
+        self, watched: QtCore.QObject, event: QtCore.QEvent
+    ) -> bool:
+        """Intercept key events from table and viewport."""
+        if event.type() == QtCore.QEvent.Type.KeyPress and isinstance(
+            event, QtGui.QKeyEvent
+        ):
+            if self._handle_shortcut_key(event):
+                event.accept()
+                return True
+        return super().eventFilter(watched, event)
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        """Handle keyboard shortcuts in diagnostics table."""
+        if self._handle_shortcut_key(event):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def open_review_gallery_for_issue(self, issue: ScanIssue) -> None:
+        """Open AnnotationReviewDialog focused on this issue's image and shape."""
+        from anylabeling.views.labeling.widgets.annotation_review_dialog import (
+            AnnotationReviewDialog,
+        )
+
+        dialog = AnnotationReviewDialog(parent=self._label_widget)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        base_img = os.path.basename(issue.image_path)
+        dialog.search_input.setText(base_img)
+        dialog.apply_filters()
+        if issue.shape_index is not None:
+            for r_idx, item in enumerate(dialog.filtered_items):
+                if (
+                    item.image_path == issue.image_path
+                    and item.shape_index == issue.shape_index
+                ):
+                    dialog.table.selectRow(r_idx)
+                    break
+        dialog.exec()
+
     def on_auto_deduplicate(self) -> None:
         """Batch remove duplicate shapes across dataset."""
         if self.report.duplicate_shapes_count == 0:
@@ -574,8 +1099,7 @@ class AnnotationDiagnosticsDialog(QDialog):
             self,
             self.tr("Auto-Deduplicate Shapes"),
             self.tr(
-                "Remove same-label duplicates only (cross-class overlaps are kept for review)?\n"
-                "A timestamped backup (.backup_*) will be created before modifying any files."
+                "Remove same-label duplicates only (cross-class overlaps are kept for review)?"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -588,7 +1112,6 @@ class AnnotationDiagnosticsDialog(QDialog):
             output_dir=self.get_output_dir(),
             iou_threshold=self.scanner.iou_duplicate_threshold,
             containment_threshold=self.scanner.containment_duplicate_threshold,
-            backup=True,
             same_label_only=True,
         )
         QMessageBox.information(
@@ -614,8 +1137,7 @@ class AnnotationDiagnosticsDialog(QDialog):
             self,
             self.tr("Purge Micro-Noise"),
             self.tr(
-                "Are you sure you want to purge all micro-noise shapes (< %.1fpx or < %.1fpx²)?\n"
-                "A timestamped backup (.backup_*) will be created before modifying any files."
+                "Are you sure you want to purge all micro-noise shapes (< %.1fpx or < %.1fpx²)?"
             )
             % (self.scanner.min_size_px, self.scanner.min_area_px),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -629,7 +1151,6 @@ class AnnotationDiagnosticsDialog(QDialog):
             output_dir=self.get_output_dir(),
             min_size_px=self.scanner.min_size_px,
             min_area_px=self.scanner.min_area_px,
-            backup=True,
         )
         QMessageBox.information(
             self,
@@ -657,7 +1178,7 @@ class AnnotationDiagnosticsDialog(QDialog):
             self.tr("Clamp Out-of-Bounds Shapes"),
             self.tr(
                 "Are you sure you want to clamp all shapes extending outside image boundaries to image dimensions?\n"
-                "A timestamped backup (.backup_*) will be created. Fully-outside shapes will be deleted."
+                "Fully-outside shapes will be deleted."
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -668,7 +1189,6 @@ class AnnotationDiagnosticsDialog(QDialog):
         clamped, deleted = clamp_out_of_bounds_shapes(
             image_paths=image_paths,
             output_dir=self.get_output_dir(),
-            backup=True,
         )
         QMessageBox.information(
             self,

@@ -116,6 +116,40 @@ class TestQuickDigitLabels(unittest.TestCase):
         widget.label_dialog = Mock()
         widget.label_dialog.add_label_history = Mock()
 
+        # Delete, toggle, and selection bindings
+        widget.delete_selected_shape = lambda: (
+            LabelingWidget.delete_selected_shape(widget)
+        )
+        widget.toggle_drawing_sensitive = lambda drawing=True: (
+            LabelingWidget.toggle_drawing_sensitive(widget, drawing)
+        )
+        widget.label_selection_changed = lambda: (
+            LabelingWidget.label_selection_changed(widget)
+        )
+        widget._fully_selected_group_shapes = lambda: (
+            LabelingWidget._fully_selected_group_shapes(widget)
+        )
+        widget._is_mid_stroke = lambda: LabelingWidget._is_mid_stroke(widget)
+        widget._unlocked_shapes_from_label_list = lambda: (
+            LabelingWidget._unlocked_shapes_from_label_list(widget)
+        )
+        widget._can_delete_shapes = lambda shapes: (
+            LabelingWidget._can_delete_shapes(widget, shapes)
+        )
+        widget.update_labeling_instruction = Mock()
+        widget.remove_labels = Mock()
+        widget.shape_selection_changed = Mock()
+        widget.no_shape = Mock(return_value=False)
+        widget._no_selection_slot = False
+
+        widget.actions = Mock()
+        widget.actions.edit_mode = Mock()
+        widget.actions.undo_last_point = Mock()
+        widget.actions.undo = Mock()
+        widget.actions.delete = Mock()
+        widget.actions.union_selection = Mock()
+        widget.actions.on_shapes_present = []
+
         return widget
 
     def test_target_label_mapping_1_to_9_and_0(self):
@@ -354,3 +388,212 @@ class TestQuickDigitLabels(unittest.TestCase):
         widget.update_crosshair_color()
         # Should stay green #00FF00 because sync_label_color is False
         self.assertEqual(widget.canvas.cross_line_color, "#00FF00")
+
+    def test_handle_digit_shortcut_in_drawing_mode_idle(self):
+        classes = ["cat", "dog", "car"]
+        widget = self._create_mock_widget(classes=classes)
+        # Set canvas to drawing/create mode
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.current = None
+        self.assertTrue(widget.canvas.drawing())
+
+        # Press 2 -> should set active label for drawing to 'dog'
+        widget.handle_digit_shortcut(2)
+        self.assertEqual(widget.digit_to_label, "dog")
+        self.assertEqual(widget.canvas.cross_line_color, "#FF0000")
+        selected = widget.unique_label_list.selectedItems()
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(
+            selected[0].data(QtCore.Qt.ItemDataRole.UserRole), "dog"
+        )
+
+    def test_handle_digit_shortcut_in_drawing_mode_mid_stroke_ignored(self):
+        classes = ["cat", "dog", "car"]
+        widget = self._create_mock_widget(classes=classes)
+        widget.canvas.mode = widget.canvas.CREATE
+        # Stroke actively in progress
+        in_progress_shape = Shape(shape_type="polygon")
+        widget.canvas.current = in_progress_shape
+        self.assertTrue(widget.canvas.drawing())
+
+        # Press 2 mid-stroke -> should not hijack active stroke
+        widget.handle_digit_shortcut(2)
+        self.assertIsNone(widget.digit_to_label)
+
+    def test_handle_digit_shortcut_reclassifies_shape_from_label_list_selection(
+        self,
+    ):
+        classes = ["cat", "dog", "car"]
+        widget = self._create_mock_widget(classes=classes)
+        # In drawing mode, canvas.selected_shapes is empty
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.selected_shapes = []
+
+        # But a shape is selected in label_list
+        shape = Shape(label="cat", shape_type="rectangle")
+        widget.canvas.shapes = [shape]
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        # Press 2 -> reclassify the selected shape to 'dog'
+        widget.handle_digit_shortcut(2)
+        self.assertEqual(shape.label, "dog")
+        widget.set_dirty.assert_called_once()
+
+    def test_delete_selected_shape_from_label_list_selection_in_drawing_mode(
+        self,
+    ):
+        """Verify delete_selected_shape removes shape from canvas when selected in label_list during drawing mode."""
+        widget = self._create_mock_widget(classes=["cat", "dog"])
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.selected_shapes = []
+
+        shape = Shape(label="cat", shape_type="rectangle")
+        widget.canvas.shapes = [shape]
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        widget.delete_selected_shape()
+        # Shape should be removed from canvas
+        self.assertNotIn(shape, widget.canvas.shapes)
+        widget.remove_labels.assert_called_once()
+        widget.set_dirty.assert_called_once()
+
+    def test_toggle_drawing_sensitive_preserves_delete_when_label_list_selected(
+        self,
+    ):
+        """Verify actions.delete remains enabled in drawing mode if a label is selected."""
+        widget = self._create_mock_widget(classes=["cat"])
+        mock_item = Mock()
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        widget.toggle_drawing_sensitive(drawing=True)
+        widget.actions.delete.setEnabled.assert_called_with(True)
+
+        # When label_list has no selection, delete should be disabled in drawing mode
+        widget.label_list.selected_items = Mock(return_value=[])
+        widget.toggle_drawing_sensitive(drawing=True)
+        widget.actions.delete.setEnabled.assert_called_with(False)
+
+    def test_toggle_drawing_sensitive_locked_only_disables_delete(self):
+        """Verify locked-only label selection does not enable delete."""
+        widget = self._create_mock_widget(classes=["cat"])
+        shape = Shape(label="cat", shape_type="rectangle")
+        shape.locked = True
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        widget.toggle_drawing_sensitive(drawing=True)
+        widget.actions.delete.setEnabled.assert_called_with(False)
+
+    def test_toggle_drawing_sensitive_suppressed_in_brush_mode(self):
+        """Verify delete stays disabled in brush mode despite selection."""
+        widget = self._create_mock_widget(classes=["cat"])
+        widget.canvas.is_brush_mode = True
+        mock_item = Mock()
+        mock_item.shape = Mock(
+            return_value=Shape(label="cat", shape_type="rectangle")
+        )
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        widget.toggle_drawing_sensitive(drawing=True)
+        widget.actions.delete.setEnabled.assert_called_with(False)
+
+    def test_delete_selected_shape_skips_locked_without_dirty(self):
+        """Verify locked-only bootstrap deletes nothing and stays clean."""
+        widget = self._create_mock_widget(classes=["cat"])
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.selected_shapes = []
+
+        shape = Shape(label="cat", shape_type="rectangle")
+        shape.locked = True
+        widget.canvas.shapes = [shape]
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        widget.delete_selected_shape()
+        self.assertIn(shape, widget.canvas.shapes)
+        widget.remove_labels.assert_not_called()
+        widget.set_dirty.assert_not_called()
+
+    def test_label_selection_changed_in_drawing_mode_selects_canvas(self):
+        """Verify selecting an item in label_list during idle drawing mode selects shape on canvas."""
+        widget = self._create_mock_widget(classes=["cat"])
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.current = None
+        # Emulate production signal wiring (Mock harness leaves it unconnected).
+        widget.canvas.selection_changed.connect(widget.shape_selection_changed)
+
+        shape = Shape(label="cat", shape_type="rectangle")
+        widget.canvas.shapes = [shape]
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+
+        widget.label_selection_changed()
+        widget.actions.delete.setEnabled.assert_called_with(True)
+        # The canvas emit must carry the selection (production slot then
+        # stores it in canvas.selected_shapes).
+        widget.shape_selection_changed.assert_called_once_with([shape])
+
+    def test_is_mid_stroke_magic_wand_blocks_digit(self):
+        """_magic_wand_active must block digits even when current is None."""
+        widget = self._create_mock_widget(classes=["cat", "dog"])
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.current = None
+        widget.canvas._magic_wand_active = True
+        self.assertTrue(widget._is_mid_stroke())
+        widget.handle_digit_shortcut(2)
+        self.assertIsNone(widget.digit_to_label)
+        widget.canvas._magic_wand_active = False
+        self.assertFalse(widget._is_mid_stroke())
+
+    def test_toggle_drawing_sensitive_mid_stroke_disables_delete(self):
+        """Mid-stroke selection must not enable Delete."""
+        widget = self._create_mock_widget(classes=["cat"])
+        widget.canvas.current = Shape(shape_type="polygon")
+        mock_item = Mock()
+        mock_item.shape = Mock(
+            return_value=Shape(label="cat", shape_type="rectangle")
+        )
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+        widget.toggle_drawing_sensitive(drawing=True)
+        widget.actions.delete.setEnabled.assert_called_with(False)
+        widget.canvas.current = None
+
+    def test_label_selection_changed_mid_stroke_noop(self):
+        """Label-list changes mid-stroke must not touch canvas selection."""
+        widget = self._create_mock_widget(classes=["cat"])
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.current = Shape(shape_type="polygon")
+        widget.canvas.select_shapes = Mock()
+        widget.canvas.deselect_shape = Mock()
+        shape = Shape(label="cat", shape_type="rectangle")
+        widget.canvas.shapes = [shape]
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+        widget.label_selection_changed()
+        widget.canvas.select_shapes.assert_not_called()
+        widget.canvas.deselect_shape.assert_not_called()
+        widget.canvas.current = None
+
+    def test_delete_selected_shape_brush_mode_noop(self):
+        """Brush mode must never bootstrap label-list selection for delete."""
+        widget = self._create_mock_widget(classes=["cat"])
+        widget.canvas.mode = widget.canvas.CREATE
+        widget.canvas.is_brush_mode = True
+        widget.canvas.selected_shapes = []
+        shape = Shape(label="cat", shape_type="rectangle")
+        widget.canvas.shapes = [shape]
+        mock_item = Mock()
+        mock_item.shape = Mock(return_value=shape)
+        widget.label_list.selected_items = Mock(return_value=[mock_item])
+        widget.delete_selected_shape()
+        self.assertIn(shape, widget.canvas.shapes)
+        widget.remove_labels.assert_not_called()
+        widget.set_dirty.assert_not_called()

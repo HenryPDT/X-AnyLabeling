@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import csv
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
 import hashlib
 import json
 import math
 import os
 import shutil
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from PIL import Image
 
@@ -635,13 +634,10 @@ def deduplicate_dataset_shapes(
     output_dir: Optional[str] = None,
     iou_threshold: float = 0.85,
     containment_threshold: float = 0.90,
-    backup: bool = True,
-    backup_dir: Optional[str] = None,
     same_label_only: bool = True,
 ) -> int:
     """Remove duplicate shapes across all dataset label files.
 
-    Creates backup before modifying if backup=True.
     Only same-label duplicates are removed by default to avoid
     cross-class data loss. Survivor is picked by score then area.
     Returns total count of duplicate shapes removed.
@@ -652,7 +648,6 @@ def deduplicate_dataset_shapes(
     )
 
     total_removed = 0
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     for image_path in image_paths:
         label_file = get_label_file_path(image_path, output_dir=output_dir)
@@ -719,26 +714,13 @@ def deduplicate_dataset_shapes(
             continue
 
         try:
-            if backup:
-                target_backup_dir = backup_dir or os.path.join(
-                    os.path.dirname(label_file), f".backup_{timestamp}"
-                )
-                os.makedirs(target_backup_dir, exist_ok=True)
-                backup_dest = os.path.join(
-                    target_backup_dir, os.path.basename(label_file)
-                )
-                shutil.copy2(label_file, backup_dest)
-
             new_shapes = [
                 s
                 for idx, s in enumerate(shapes)
                 if idx not in indices_to_remove
             ]
             data["shapes"] = new_shapes
-            tmp_path = label_file + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            os.replace(tmp_path, label_file)
+            _atomic_write_json(label_file, data)
         except Exception as exc:
             logger.warning(f"Failed to deduplicate {label_file}: {exc}")
             continue
@@ -753,16 +735,12 @@ def purge_micro_shapes(
     output_dir: Optional[str] = None,
     min_size_px: float = 5.0,
     min_area_px: float = 16.0,
-    backup: bool = True,
-    backup_dir: Optional[str] = None,
 ) -> int:
     """Purge micro-noise shapes whose width, height, or area falls below threshold.
 
-    Creates backup before modifying if backup=True.
     Returns total count of shapes purged.
     """
     total_purged = 0
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     for image_path in image_paths:
         label_file = get_label_file_path(image_path, output_dir=output_dir)
@@ -820,21 +798,8 @@ def purge_micro_shapes(
 
         if purged_in_file > 0:
             try:
-                if backup:
-                    target_backup_dir = backup_dir or os.path.join(
-                        os.path.dirname(label_file), f".backup_{timestamp}"
-                    )
-                    os.makedirs(target_backup_dir, exist_ok=True)
-                    backup_dest = os.path.join(
-                        target_backup_dir, os.path.basename(label_file)
-                    )
-                    shutil.copy2(label_file, backup_dest)
-
                 data["shapes"] = surviving_shapes
-                tmp_path = label_file + ".tmp"
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                os.replace(tmp_path, label_file)
+                _atomic_write_json(label_file, data)
             except Exception as exc:
                 logger.warning(f"Failed to purge {label_file}: {exc}")
                 continue
@@ -868,8 +833,6 @@ def _identify_out_of_bounds_indices(
 def clamp_out_of_bounds_shapes(
     image_paths: List[str],
     output_dir: Optional[str] = None,
-    backup: bool = True,
-    backup_dir: Optional[str] = None,
 ) -> Tuple[int, int]:
     """Clamp out-of-bounds shape coordinates to image boundaries across dataset label files.
 
@@ -877,11 +840,8 @@ def clamp_out_of_bounds_shapes(
     Returns (clamped_count, deleted_count) separately so callers do not
     misreport deletes as clamps.
     """
-    from datetime import datetime as _dt
-
     total_clamped = 0
     total_deleted = 0
-    timestamp = _dt.now().strftime("%Y%m%d_%H%M%S")
 
     for image_path in image_paths:
         label_file = get_label_file_path(image_path, output_dir=output_dir)
@@ -956,23 +916,14 @@ def clamp_out_of_bounds_shapes(
             else:
                 new_shapes.append(shape)
 
+        # No effective change (all clamps failed) — skip write to avoid
+        # mtime/reformat churn.
+        if file_clamped == 0 and file_deleted == 0:
+            continue
+
         try:
-            if backup and (file_clamped or file_deleted):
-                target_backup_dir = backup_dir or os.path.join(
-                    os.path.dirname(label_file), f".backup_{timestamp}"
-                )
-                os.makedirs(target_backup_dir, exist_ok=True)
-                shutil.copy2(
-                    label_file,
-                    os.path.join(
-                        target_backup_dir, os.path.basename(label_file)
-                    ),
-                )
             data["shapes"] = new_shapes
-            tmp_path = label_file + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            os.replace(tmp_path, label_file)
+            _atomic_write_json(label_file, data)
         except Exception as exc:
             logger.warning(f"Failed to write clamped {label_file}: {exc}")
             continue
@@ -1081,6 +1032,106 @@ def move_empty_images(
                 continue
 
     return moved_count
+
+
+def _atomic_write_json(label_file: str, data: Dict[str, Any]) -> None:
+    """Write a label JSON atomically via tmp-file replacement.
+
+    Uses a pid-suffixed tmp name so concurrent writers do not collide.
+    fsyncs the file before replace. Cleans up the tmp file on failure.
+    Raises on error so callers decide whether to skip the file or abort.
+    """
+    tmp_path = f"{label_file}.{os.getpid()}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        os.replace(tmp_path, label_file)
+    finally:
+        try:
+            if os.path.isfile(tmp_path):
+                os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
+def apply_shape_modifications(
+    label_file: str,
+    deletions: Set[int] | List[int],
+    reclasses: Dict[int, str],
+    expected_labels: Optional[Dict[int, str]] = None,
+) -> bool:
+    """Apply a batch of deletions and reclassifications to a label file safely.
+
+    Deletions are applied in descending index order to prevent index-drift.
+    Writes are atomic using a temporary file replacement.
+    Out-of-range indices in ``deletions``/``reclasses`` are ignored.
+    If ``expected_labels`` maps an index to its expected ``label``, a
+    mismatch aborts with ``False`` instead of deleting the wrong shape
+    (stale gallery / concurrent edit guard).
+    """
+    if not os.path.isfile(label_file):
+        return False
+    try:
+        with open(label_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return False
+        shapes = data.get("shapes", [])
+        if not isinstance(shapes, list):
+            return False
+
+        # Stale-index guard: verify labels before touching anything.
+        if expected_labels:
+            for idx, exp_lbl in expected_labels.items():
+                if not (0 <= idx < len(shapes)):
+                    logger.error(
+                        f"Stale shape index {idx} for {label_file} "
+                        "(out of range, gallery is stale)"
+                    )
+                    return False
+                existing = shapes[idx]
+                if isinstance(existing, dict) and isinstance(exp_lbl, str):
+                    if str(existing.get("label", "")) != exp_lbl:
+                        logger.error(
+                            f"Label mismatch at index {idx} for {label_file} "
+                            f"(expected '{exp_lbl}', found "
+                            f"'{existing.get('label')}') — gallery is stale"
+                        )
+                        return False
+
+        # Apply reclassifications first (indices refer to original
+        # positions, so reclass must precede deletion shifts).
+        changed = False
+        for idx, new_lbl in reclasses.items():
+            if 0 <= idx < len(shapes) and isinstance(shapes[idx], dict):
+                if str(shapes[idx].get("label", "")) != str(new_lbl):
+                    shapes[idx]["label"] = new_lbl
+                    changed = True
+
+        # Apply deletions in descending index order to avoid shifting earlier indices
+        valid_deletions = sorted(
+            {d for d in set(deletions) if 0 <= d < len(shapes)},
+            reverse=True,
+        )
+        for idx in valid_deletions:
+            shapes.pop(idx)
+        if valid_deletions:
+            changed = True
+
+        if not changed:
+            return True
+
+        data["shapes"] = shapes
+        _atomic_write_json(label_file, data)
+        return True
+    except Exception as exc:
+        logger.error(f"Failed applying modifications to {label_file}: {exc}")
+        return False
 
 
 def export_report_to_file(

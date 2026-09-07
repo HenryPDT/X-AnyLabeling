@@ -6,7 +6,7 @@ import subprocess
 
 def find_lrelease() -> str:
     """Return an available Qt Linguist release compiler."""
-    candidates = ("lrelease", "lrelease-qt6", "pyside6-lrelease")
+    candidates = ("pyside6-lrelease", "lrelease-qt6", "lrelease")
     for candidate in candidates:
         executable = shutil.which(candidate)
         if executable:

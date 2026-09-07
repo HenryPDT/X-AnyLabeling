@@ -24,7 +24,9 @@ class TestLabelWidgetGroups(unittest.TestCase):
         canvas = SimpleNamespace(
             _active_group_shapes=Mock(return_value=shapes),
             delete_selected=Mock(return_value=shapes),
-            selected_shapes=[],
+            # An active group implies a non-empty selection in production
+            # (_active_group_shapes returns [] when nothing is selected).
+            selected_shapes=list(shapes),
         )
         widget = SimpleNamespace(
             canvas=canvas,
