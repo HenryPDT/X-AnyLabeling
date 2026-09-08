@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import Qt
@@ -16,12 +15,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QImage
 
+from anylabeling.services.dataset_files import soft_delete_dataset_images
 from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.shape import Shape
-from anylabeling.views.labeling.utils.qt import (
-    get_image_delete_trash_dir,
-    new_icon_path,
-)
+from anylabeling.views.labeling.utils.qt import new_icon_path
 from anylabeling.views.labeling.utils.style import (
     get_dialog_style,
     get_ok_btn_style,
@@ -311,55 +308,35 @@ class ShapeModifyDialog(QDialog):
         deleted_count = 0
         dataset_root = getattr(self.parent, "last_open_dir", None)
         current_dir = os.path.dirname(self.image_file_list[0])
+        output_dir = getattr(self.parent, "output_dir", None)
+        paths_to_delete: list[str] = []
 
         for i in range(start_idx - 1, end_idx):
             if i >= len(self.image_file_list):
                 break
-
             image_file = self.image_file_list[i]
-
             if os.path.exists(image_file):
-                try:
-                    image_name = os.path.basename(image_file)
-                    save_path = get_image_delete_trash_dir(
-                        image_file, dataset_root=dataset_root
-                    )
-                    os.makedirs(save_path, exist_ok=True)
-                    save_file = os.path.join(save_path, image_name)
-                    if os.path.exists(save_file):
-                        stem, ext = os.path.splitext(image_name)
-                        counter = 1
-                        while os.path.exists(save_file):
-                            save_file = os.path.join(
-                                save_path, f"{stem}_{counter:03d}{ext}"
-                            )
-                            counter += 1
-                    shutil.move(image_file, save_file)
+                paths_to_delete.append(image_file)
 
-                    label_dir = os.path.dirname(image_file)
-                    if self.parent.output_dir:
-                        label_dir = self.parent.output_dir
-                    label_file = os.path.join(
-                        label_dir, os.path.splitext(image_name)[0] + ".json"
-                    )
-
-                    if os.path.exists(label_file):
-                        os.remove(label_file)
-
-                    deleted_count += 1
-                except Exception as e:
-                    logger.error(f"Error deleting {image_file}: {e}")
+        if paths_to_delete:
+            deleted_count, failed = soft_delete_dataset_images(
+                paths_to_delete,
+                output_dir=output_dir,
+                dataset_root=dataset_root,
+            )
+            if failed:
+                for image_file in failed:
+                    logger.error(f"Error deleting {image_file}")
 
         if deleted_count > 0:
-            self.parent.reset_state()
-            reload_dir = dataset_root or current_dir
-            self.parent.import_image_folder(reload_dir)
-
-            if len(self.parent.image_list) > 0:
-                filename = self.parent.image_list[0]
-                self.parent.filename = filename
-                if filename:
-                    self.parent.load_file(filename)
+            failed_set = set(failed) if paths_to_delete else set()
+            removed_paths = {
+                path for path in paths_to_delete if path not in failed_set
+            }
+            self.parent.reload_after_image_paths_removed(
+                removed_paths,
+                fallback_dir=dataset_root or current_dir,
+            )
 
         logger.info(
             f"Deleted {deleted_count} image files in range {start_idx}-{end_idx}"

@@ -11,13 +11,17 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from PIL import Image
 
+from anylabeling.services.dataset_files import (
+    soft_delete_dataset_images,
+    unique_dest_path,
+)
+from anylabeling.services.dataset_meta import get_label_file_path
 from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.utils.shape_geometry import (
     clamp_shape_to_image_bounds,
     detect_duplicate_shapes,
     shape_to_xyxy,
 )
-from anylabeling.views.labeling.utils.qt import get_image_delete_trash_dir
 
 
 @dataclass
@@ -65,16 +69,6 @@ class ScanReport:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent)
-
-
-def get_label_file_path(
-    image_path: str, output_dir: Optional[str] = None
-) -> str:
-    """Resolve the expected annotation JSON file path for a given image path."""
-    json_filename = os.path.splitext(os.path.basename(image_path))[0] + ".json"
-    if output_dir:
-        return os.path.join(output_dir, json_filename)
-    return os.path.splitext(image_path)[0] + ".json"
 
 
 def compute_file_md5(file_path: str, chunk_size: int = 65536) -> Optional[str]:
@@ -731,83 +725,16 @@ def deduplicate_dataset_shapes(
     return total_removed
 
 
-def _resolve_label_file_path(
-    image_path: str, output_dir: Optional[str] = None
-) -> str:
-    """Resolve label JSON path, matching LabelWidget.delete_image_file fallback."""
-    label_file = get_label_file_path(image_path, output_dir=output_dir)
-    if os.path.isfile(label_file):
-        return label_file
-    sibling = os.path.splitext(image_path)[0] + ".json"
-    if sibling != label_file and os.path.isfile(sibling):
-        return sibling
-    return label_file
-
-
-def delete_image_files(
-    image_paths: List[str],
-    output_dir: Optional[str] = None,
-    dataset_root: Optional[str] = None,
-) -> Tuple[int, List[str]]:
-    """Remove image files from the dataset and delete paired JSON labels.
-
-    Images are moved to ``{dataset_root}/_delete_/`` when dataset_root is
-    known; otherwise ``../_delete_/`` relative to each image directory.
-    Label JSON files are permanently removed.
-    Returns (removed_count, failed_image_paths).
-    """
-    removed_count = 0
-    failed: List[str] = []
-    seen: Set[str] = set()
-    unique_paths: List[str] = []
-    for image_path in image_paths:
-        if image_path and image_path not in seen:
-            seen.add(image_path)
-            unique_paths.append(image_path)
-
-    for image_path in unique_paths:
-        if not image_path or not os.path.isfile(image_path):
-            continue
-        try:
-            trash_dir = get_image_delete_trash_dir(
-                image_path, dataset_root=dataset_root
-            )
-            os.makedirs(trash_dir, exist_ok=True)
-            dest_image = _unique_dest_path(
-                trash_dir, os.path.basename(image_path)
-            )
-            shutil.move(image_path, dest_image)
-            logger.info(f"Image file is moved to: {dest_image}")
-        except Exception as exc:
-            logger.warning(f"Failed to delete image {image_path}: {exc}")
-            failed.append(image_path)
-            continue
-
-        label_file = _resolve_label_file_path(
-            image_path, output_dir=output_dir
-        )
-        if os.path.isfile(label_file):
-            try:
-                os.remove(label_file)
-                logger.info(f"Label file is removed: {label_file}")
-            except Exception as exc:
-                logger.warning(f"Failed to delete label {label_file}: {exc}")
-
-        removed_count += 1
-
-    return removed_count, failed
-
-
 def delete_duplicate_images(
     image_paths: List[str],
     output_dir: Optional[str] = None,
     dataset_root: Optional[str] = None,
-) -> int:
+) -> Tuple[int, List[str]]:
     """Remove MD5-identical duplicate images, keeping the first occurrence.
 
     Duplicate images are soft-deleted under the dataset _delete_ folder;
     paired JSON labels are permanently removed.
-    Returns count of duplicate images removed.
+    Returns (removed_count, removed_image_paths).
     """
     image_hashes: Dict[str, str] = {}
     to_delete: List[str] = []
@@ -823,10 +750,12 @@ def delete_duplicate_images(
         else:
             image_hashes[file_hash] = image_path
 
-    deleted, _ = delete_image_files(
+    removed, failed = soft_delete_dataset_images(
         to_delete, output_dir=output_dir, dataset_root=dataset_root
     )
-    return deleted
+    failed_set = set(failed)
+    removed_paths = [path for path in to_delete if path not in failed_set]
+    return removed, removed_paths
 
 
 def purge_micro_shapes(
@@ -1033,21 +962,6 @@ def clamp_out_of_bounds_shapes(
     return total_clamped, total_deleted
 
 
-def _unique_dest_path(directory: str, basename: str) -> str:
-    """Collision-safe destination path with numeric suffix."""
-    candidate = os.path.join(directory, basename)
-    if not os.path.exists(candidate):
-        return candidate
-    stem, ext = os.path.splitext(basename)
-    counter = 1
-    while True:
-        suffixed = f"{stem}_{counter:03d}{ext}"
-        candidate = os.path.join(directory, suffixed)
-        if not os.path.exists(candidate):
-            return candidate
-        counter += 1
-
-
 def _is_empty_label_for_move(
     label_file: str, include_verified_negatives: bool
 ) -> Optional[bool]:
@@ -1114,13 +1028,13 @@ def move_empty_images(
 
         if is_empty:
             try:
-                dest_img = _unique_dest_path(
+                dest_img = unique_dest_path(
                     destination_dir, os.path.basename(image_path)
                 )
                 shutil.move(image_path, dest_img)
 
                 if move_label_files and os.path.isfile(label_file):
-                    dest_lbl = _unique_dest_path(
+                    dest_lbl = unique_dest_path(
                         destination_dir, os.path.basename(label_file)
                     )
                     shutil.move(label_file, dest_lbl)

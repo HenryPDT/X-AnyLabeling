@@ -76,7 +76,10 @@ class TestCanvasAdjustmentWidget(unittest.TestCase):
         self.widget.brightness_slider.setValue(53)
 
         self.assertEqual(len(signal_spy), 0)
-        QtTest.QTest.qWait(self.widget.BC_UPDATE_INTERVAL_MS + 10)
+        self.assertTrue(
+            signal_spy.wait(self.widget.BC_UPDATE_INTERVAL_MS + 200),
+            "brightness_contrast_changed was not emitted after throttle interval",
+        )
         self.assertEqual(len(signal_spy), 1)
         self.assertEqual(list(signal_spy[0]), [53, 50])
 
@@ -85,7 +88,9 @@ class TestCanvasAdjustmentWidget(unittest.TestCase):
 
         self.widget.brightness_slider.setValue(51)
         self.widget.set_brightness_contrast(60, 70)
-        QtTest.QTest.qWait(self.widget.BC_UPDATE_INTERVAL_MS + 10)
+        self.assertFalse(
+            signal_spy.wait(self.widget.BC_UPDATE_INTERVAL_MS + 200)
+        )
 
         self.assertEqual(len(signal_spy), 0)
         self.assertEqual(self.widget.brightness_value_label.text(), "1.20")

@@ -7,7 +7,7 @@ import os.path as osp
 import re
 import shutil
 import zlib
-from typing import Optional
+from typing import Optional, Set
 
 import cv2
 import numpy as np
@@ -33,6 +33,10 @@ from PyQt6.QtWidgets import (
     QLineEdit,
 )
 
+from anylabeling.services.dataset_files import (
+    delete_label_file,
+    soft_delete_dataset_images,
+)
 from anylabeling.services.auto_labeling.types import AutoLabelingMode
 from anylabeling.services.auto_labeling import _THUMBNAIL_RENDER_MODELS
 from anylabeling.services.auto_labeling.prediction_filter import (
@@ -7304,6 +7308,77 @@ class LabelingWidget(LabelDialog):
 
         return image_file
 
+    def _pick_filename_after_image_removal(
+        self,
+        removed_paths: Set[str],
+        *,
+        prefer_next: bool = False,
+    ) -> Optional[str]:
+        """Choose which image to show after one or more files were removed."""
+        current_str = str(self.filename) if self.filename else None
+        image_list = list(self.image_list or [])
+
+        if current_str and current_str not in removed_paths:
+            return self.filename
+
+        if prefer_next and current_str and current_str in removed_paths:
+            try:
+                idx = self.fn_to_index[current_str]
+                if idx + 1 < len(image_list):
+                    return image_list[idx + 1]
+                if image_list:
+                    return image_list[0]
+            except (KeyError, TypeError, AttributeError):
+                pass
+
+        if current_str and current_str in removed_paths:
+            try:
+                idx = self.fn_to_index[current_str]
+                for i in range(idx + 1, len(image_list)):
+                    candidate = str(image_list[i])
+                    if candidate not in removed_paths:
+                        return image_list[i]
+                for i in range(0, idx):
+                    candidate = str(image_list[i])
+                    if candidate not in removed_paths:
+                        return image_list[i]
+            except (KeyError, TypeError, AttributeError):
+                pass
+
+        for path in image_list:
+            if str(path) not in removed_paths:
+                return path
+        return image_list[0] if image_list else None
+
+    def reload_after_image_paths_removed(
+        self,
+        removed_paths: Optional[Set[str]] = None,
+        *,
+        fallback_dir: Optional[str] = None,
+    ) -> None:
+        """Rescan the dataset folder and reload a sensible current image."""
+        removed = removed_paths or set()
+        reload_dir = self.last_open_dir or fallback_dir
+        if not reload_dir and removed:
+            reload_dir = osp.dirname(next(iter(removed)))
+        if not reload_dir or not osp.isdir(reload_dir):
+            return
+        if not self.may_continue():
+            return
+
+        next_filename = self._pick_filename_after_image_removal(
+            removed, prefer_next=len(removed) == 1
+        )
+        self.reset_state()
+        self.import_image_folder(reload_dir, load=False)
+
+        if next_filename and osp.isfile(str(next_filename)):
+            self.filename = next_filename
+            self.load_file(next_filename)
+        elif self.image_list:
+            self.filename = self.image_list[0]
+            self.load_file(self.filename)
+
     def delete_file(self):
         mb = QtWidgets.QMessageBox
         if self._config.get("keep_prev", False):
@@ -7331,10 +7406,7 @@ class LabelingWidget(LabelDialog):
             return
 
         label_file = self.get_label_file()
-        if osp.exists(label_file):
-            os.remove(label_file)
-            logger.info(f"Label file is removed: {label_file}")
-
+        if delete_label_file(label_file):
             item = self.file_list_widget.currentItem()
             item.setCheckState(Qt.CheckState.Unchecked)
             self._set_file_item_checked(item, False)
@@ -7375,52 +7447,21 @@ class LabelingWidget(LabelDialog):
             return
 
         image_file = self.get_image_file()
-        if osp.exists(image_file):
-            image_name = osp.basename(image_file)
-            save_path = utils.get_image_delete_trash_dir(
-                image_file, dataset_root=self.last_open_dir
-            )
-            os.makedirs(save_path, exist_ok=True)
-            save_file = osp.join(save_path, image_name)
-            if osp.exists(save_file):
-                stem, ext = osp.splitext(image_name)
-                counter = 1
-                while osp.exists(save_file):
-                    save_file = osp.join(
-                        save_path, f"{stem}_{counter:03d}{ext}"
-                    )
-                    counter += 1
-            shutil.move(image_file, save_file)
-            logger.info(f"Image file is moved to: {osp.realpath(save_file)}")
+        if not osp.exists(image_file):
+            return
 
-            label_dir_path = osp.dirname(self.filename)
-            if self.output_dir:
-                label_dir_path = self.output_dir
-            label_name = osp.splitext(image_name)[0] + ".json"
-            label_file = osp.join(label_dir_path, label_name)
-            if not osp.exists(label_file):
-                label_file = osp.join(osp.dirname(image_file), label_name)
-            if osp.exists(label_file):
-                os.remove(label_file)
-                logger.info(f"Label file is removed: {image_file}")
+        removed, failed = soft_delete_dataset_images(
+            [image_file],
+            output_dir=self.output_dir,
+            dataset_root=self.last_open_dir,
+        )
+        if removed == 0 or failed:
+            return
 
-            filename = None
-            if self.filename is None:
-                filename = self.image_list[0]
-            else:
-                current_index = self.fn_to_index[str(self.filename)]
-                if current_index + 1 < len(self.image_list):
-                    filename = self.image_list[current_index + 1]
-                else:
-                    filename = self.image_list[0]
-
-            self.reset_state()
-            reload_dir = self.last_open_dir or osp.dirname(image_file)
-            self.import_image_folder(reload_dir)
-
-            self.filename = filename
-            if self.filename:
-                self.load_file(self.filename)
+        self.reload_after_image_paths_removed(
+            {image_file},
+            fallback_dir=osp.dirname(image_file),
+        )
 
     # Message Dialogs. #
     def has_labels(self):

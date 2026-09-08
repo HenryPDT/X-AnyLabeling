@@ -10,29 +10,13 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from anylabeling.views.labeling.logger import logger
 from .image import get_supported_image_extensions
+from anylabeling.services.dataset_files import (
+    IMAGE_DELETE_DIRNAME,
+    get_image_delete_trash_dir,
+)
 
-IMAGE_DELETE_DIRNAME = "_delete_"
-
-
-def get_image_delete_trash_dir(
-    image_path: str, dataset_root: Optional[str] = None
-) -> str:
-    """Return the _delete_ folder for soft-deleted dataset images.
-
-    When dataset_root is set and contains the image, trash is anchored to
-    ``{dataset_root}/_delete_/``. Otherwise falls back to ``../_delete_/``
-    relative to the image directory (legacy flat-folder behavior).
-    """
-    abs_image = osp.abspath(image_path)
-    if dataset_root:
-        root = osp.abspath(dataset_root)
-        try:
-            if osp.commonpath((root, abs_image)) == root:
-                return osp.join(root, IMAGE_DELETE_DIRNAME)
-        except ValueError:
-            pass
-    image_dir = osp.dirname(abs_image)
-    return osp.abspath(osp.join(image_dir, "..", IMAGE_DELETE_DIRNAME))
+# Re-export for utils.get_image_delete_trash_dir callers.
+__all__ = ["get_image_delete_trash_dir", "IMAGE_DELETE_DIRNAME"]
 
 
 def apply_application_font(font_family):

@@ -32,12 +32,12 @@ from anylabeling.services.annotation_diagnostics import (
     clamp_out_of_bounds_shapes,
     deduplicate_dataset_shapes,
     delete_duplicate_images,
-    delete_image_files,
     export_report_to_file,
     get_label_file_path,
     move_empty_images,
     purge_micro_shapes,
 )
+from anylabeling.services.dataset_files import soft_delete_dataset_images
 from anylabeling.views.labeling.utils.style import (
     get_dialog_style,
     get_progress_dialog_style,
@@ -393,6 +393,21 @@ class AnnotationDiagnosticsDialog(QDialog):
         ):
             return self._label_widget.last_open_dir
         return None
+
+    def _refresh_main_window_file_list(self, deleted_paths: Set[str]) -> None:
+        """Reload sidebar/file list after image files are removed from disk."""
+        w = self._label_widget
+        if not w:
+            return
+        fallback = None
+        if deleted_paths:
+            fallback = os.path.dirname(next(iter(deleted_paths)))
+        try:
+            w.reload_after_image_paths_removed(
+                deleted_paths, fallback_dir=fallback
+            )
+        except Exception:
+            pass
 
     def run_scan(self, silent: bool = True) -> None:
         """Execute full dataset diagnostic scan."""
@@ -1124,7 +1139,7 @@ class AnnotationDiagnosticsDialog(QDialog):
         if self._abort_if_main_dirty(set(image_paths)):
             return
 
-        deleted_count, failed = delete_image_files(
+        deleted_count, failed = soft_delete_dataset_images(
             image_paths=image_paths,
             output_dir=self.get_output_dir(),
             dataset_root=self.get_dataset_root(),
@@ -1148,8 +1163,7 @@ class AnnotationDiagnosticsDialog(QDialog):
                 self,
                 self.tr("Partial Success"),
                 self.tr(
-                    "Removed %d image(s); failed to remove %d image(s): %s\n\n"
-                    "Please reopen the image folder to refresh the file list."
+                    "Removed %d image(s); failed to remove %d image(s): %s"
                 )
                 % (
                     deleted_count,
@@ -1162,13 +1176,12 @@ class AnnotationDiagnosticsDialog(QDialog):
                 self,
                 self.tr("Delete Complete"),
                 self.tr(
-                    "Successfully removed %d image(s) to the _delete_ folder.\n\n"
-                    "Please reopen the image folder to refresh the file list."
+                    "Successfully removed %d image(s) to the _delete_ folder."
                 )
                 % deleted_count,
             )
 
-        self._safe_reload_current_file()
+        self._refresh_main_window_file_list(deleted_paths)
         self.apply_filter()
 
     def _handle_shortcut_key(self, event: QtGui.QKeyEvent) -> bool:
@@ -1295,6 +1308,7 @@ class AnnotationDiagnosticsDialog(QDialog):
         output_dir = self.get_output_dir()
         removed_shapes = 0
         removed_images = 0
+        removed_image_paths: List[str] = []
 
         if shape_dups > 0:
             removed_shapes = deduplicate_dataset_shapes(
@@ -1305,7 +1319,7 @@ class AnnotationDiagnosticsDialog(QDialog):
                 same_label_only=True,
             )
         if image_dups > 0:
-            removed_images = delete_duplicate_images(
+            removed_images, removed_image_paths = delete_duplicate_images(
                 image_paths=image_paths,
                 output_dir=output_dir,
                 dataset_root=self.get_dataset_root(),
@@ -1322,10 +1336,6 @@ class AnnotationDiagnosticsDialog(QDialog):
                 % removed_images
             )
         result_msg = "\n".join(result_parts)
-        if removed_images > 0:
-            result_msg += "\n\n" + self.tr(
-                "Please reopen the image folder to refresh the file list."
-            )
 
         QMessageBox.information(
             self,
@@ -1333,7 +1343,10 @@ class AnnotationDiagnosticsDialog(QDialog):
             result_msg,
         )
 
-        self._safe_reload_current_file()
+        if removed_images > 0:
+            self._refresh_main_window_file_list(set(removed_image_paths))
+        else:
+            self._safe_reload_current_file()
         self.run_scan(silent=True)
 
     def on_purge_micro_noise(self) -> None:
