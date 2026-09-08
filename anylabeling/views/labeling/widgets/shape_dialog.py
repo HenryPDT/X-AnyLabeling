@@ -18,7 +18,10 @@ from PyQt6.QtGui import QImage
 
 from anylabeling.views.labeling.logger import logger
 from anylabeling.views.labeling.shape import Shape
-from anylabeling.views.labeling.utils.qt import new_icon_path
+from anylabeling.views.labeling.utils.qt import (
+    get_image_delete_trash_dir,
+    new_icon_path,
+)
 from anylabeling.views.labeling.utils.style import (
     get_dialog_style,
     get_ok_btn_style,
@@ -306,9 +309,8 @@ class ShapeModifyDialog(QDialog):
             end_idx (int): Ending frame index (inclusive).
         """
         deleted_count = 0
+        dataset_root = getattr(self.parent, "last_open_dir", None)
         current_dir = os.path.dirname(self.image_file_list[0])
-        save_path = os.path.join(current_dir, "..", "_delete_")
-        os.makedirs(save_path, exist_ok=True)
 
         for i in range(start_idx - 1, end_idx):
             if i >= len(self.image_file_list):
@@ -319,7 +321,19 @@ class ShapeModifyDialog(QDialog):
             if os.path.exists(image_file):
                 try:
                     image_name = os.path.basename(image_file)
+                    save_path = get_image_delete_trash_dir(
+                        image_file, dataset_root=dataset_root
+                    )
+                    os.makedirs(save_path, exist_ok=True)
                     save_file = os.path.join(save_path, image_name)
+                    if os.path.exists(save_file):
+                        stem, ext = os.path.splitext(image_name)
+                        counter = 1
+                        while os.path.exists(save_file):
+                            save_file = os.path.join(
+                                save_path, f"{stem}_{counter:03d}{ext}"
+                            )
+                            counter += 1
                     shutil.move(image_file, save_file)
 
                     label_dir = os.path.dirname(image_file)
@@ -338,7 +352,8 @@ class ShapeModifyDialog(QDialog):
 
         if deleted_count > 0:
             self.parent.reset_state()
-            self.parent.import_image_folder(current_dir)
+            reload_dir = dataset_root or current_dir
+            self.parent.import_image_folder(reload_dir)
 
             if len(self.parent.image_list) > 0:
                 filename = self.parent.image_list[0]

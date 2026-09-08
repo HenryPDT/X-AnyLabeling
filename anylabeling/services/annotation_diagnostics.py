@@ -17,6 +17,7 @@ from anylabeling.views.labeling.utils.shape_geometry import (
     detect_duplicate_shapes,
     shape_to_xyxy,
 )
+from anylabeling.views.labeling.utils.qt import get_image_delete_trash_dir
 
 
 @dataclass
@@ -728,6 +729,104 @@ def deduplicate_dataset_shapes(
         total_removed += len(indices_to_remove)
 
     return total_removed
+
+
+def _resolve_label_file_path(
+    image_path: str, output_dir: Optional[str] = None
+) -> str:
+    """Resolve label JSON path, matching LabelWidget.delete_image_file fallback."""
+    label_file = get_label_file_path(image_path, output_dir=output_dir)
+    if os.path.isfile(label_file):
+        return label_file
+    sibling = os.path.splitext(image_path)[0] + ".json"
+    if sibling != label_file and os.path.isfile(sibling):
+        return sibling
+    return label_file
+
+
+def delete_image_files(
+    image_paths: List[str],
+    output_dir: Optional[str] = None,
+    dataset_root: Optional[str] = None,
+) -> Tuple[int, List[str]]:
+    """Remove image files from the dataset and delete paired JSON labels.
+
+    Images are moved to ``{dataset_root}/_delete_/`` when dataset_root is
+    known; otherwise ``../_delete_/`` relative to each image directory.
+    Label JSON files are permanently removed.
+    Returns (removed_count, failed_image_paths).
+    """
+    removed_count = 0
+    failed: List[str] = []
+    seen: Set[str] = set()
+    unique_paths: List[str] = []
+    for image_path in image_paths:
+        if image_path and image_path not in seen:
+            seen.add(image_path)
+            unique_paths.append(image_path)
+
+    for image_path in unique_paths:
+        if not image_path or not os.path.isfile(image_path):
+            continue
+        try:
+            trash_dir = get_image_delete_trash_dir(
+                image_path, dataset_root=dataset_root
+            )
+            os.makedirs(trash_dir, exist_ok=True)
+            dest_image = _unique_dest_path(
+                trash_dir, os.path.basename(image_path)
+            )
+            shutil.move(image_path, dest_image)
+            logger.info(f"Image file is moved to: {dest_image}")
+        except Exception as exc:
+            logger.warning(f"Failed to delete image {image_path}: {exc}")
+            failed.append(image_path)
+            continue
+
+        label_file = _resolve_label_file_path(
+            image_path, output_dir=output_dir
+        )
+        if os.path.isfile(label_file):
+            try:
+                os.remove(label_file)
+                logger.info(f"Label file is removed: {label_file}")
+            except Exception as exc:
+                logger.warning(f"Failed to delete label {label_file}: {exc}")
+
+        removed_count += 1
+
+    return removed_count, failed
+
+
+def delete_duplicate_images(
+    image_paths: List[str],
+    output_dir: Optional[str] = None,
+    dataset_root: Optional[str] = None,
+) -> int:
+    """Remove MD5-identical duplicate images, keeping the first occurrence.
+
+    Duplicate images are soft-deleted under the dataset _delete_ folder;
+    paired JSON labels are permanently removed.
+    Returns count of duplicate images removed.
+    """
+    image_hashes: Dict[str, str] = {}
+    to_delete: List[str] = []
+
+    for image_path in image_paths:
+        if not os.path.isfile(image_path):
+            continue
+        file_hash = compute_file_md5(image_path)
+        if not file_hash:
+            continue
+        if file_hash in image_hashes:
+            to_delete.append(image_path)
+        else:
+            image_hashes[file_hash] = image_path
+
+    deleted, _ = delete_image_files(
+        to_delete, output_dir=output_dir, dataset_root=dataset_root
+    )
+    return deleted
 
 
 def purge_micro_shapes(

@@ -31,6 +31,8 @@ from anylabeling.services.annotation_diagnostics import (
     apply_shape_modifications,
     clamp_out_of_bounds_shapes,
     deduplicate_dataset_shapes,
+    delete_duplicate_images,
+    delete_image_files,
     export_report_to_file,
     get_label_file_path,
     move_empty_images,
@@ -383,6 +385,13 @@ class AnnotationDiagnosticsDialog(QDialog):
     def get_output_dir(self) -> Optional[str]:
         if self._label_widget and hasattr(self._label_widget, "output_dir"):
             return self._label_widget.output_dir
+        return None
+
+    def get_dataset_root(self) -> Optional[str]:
+        if self._label_widget and getattr(
+            self._label_widget, "last_open_dir", None
+        ):
+            return self._label_widget.last_open_dir
         return None
 
     def run_scan(self, silent: bool = True) -> None:
@@ -752,20 +761,41 @@ class AnnotationDiagnosticsDialog(QDialog):
         deletable_issues = [
             iss for iss in selected_issues if iss.shape_index is not None
         ]
+        image_deletable_issues = [
+            iss
+            for iss in selected_issues
+            if iss.issue_type == "duplicate_image"
+        ]
+        unique_image_paths: List[str] = []
+        seen_images: Set[str] = set()
+        for iss in image_deletable_issues:
+            if iss.image_path and iss.image_path not in seen_images:
+                seen_images.add(iss.image_path)
+                unique_image_paths.append(iss.image_path)
 
         menu = QMenu(self)
         act_jump = menu.addAction(self.tr("Jump to Annotation"))
         act_gallery = menu.addAction(self.tr("Review in Gallery..."))
 
         act_delete = None
-        if deletable_issues:
+        act_delete_image = None
+        if deletable_issues or unique_image_paths:
             menu.addSeparator()
+        if deletable_issues:
             if len(deletable_issues) == 1:
                 act_delete = menu.addAction(self.tr("Delete Shape (Del)"))
             else:
                 act_delete = menu.addAction(
                     self.tr("Delete %d Selected Shapes (Del)")
                     % len(deletable_issues)
+                )
+        if unique_image_paths:
+            if len(unique_image_paths) == 1:
+                act_delete_image = menu.addAction(self.tr("Delete Image File"))
+            else:
+                act_delete_image = menu.addAction(
+                    self.tr("Delete %d Selected Images")
+                    % len(unique_image_paths)
                 )
 
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
@@ -775,6 +805,8 @@ class AnnotationDiagnosticsDialog(QDialog):
             self.open_review_gallery_for_issue(self.filtered_issues[row])
         elif act_delete and chosen == act_delete:
             self.delete_shapes_for_issues(deletable_issues)
+        elif act_delete_image and chosen == act_delete_image:
+            self.delete_images_for_issues(image_deletable_issues)
 
     def delete_shape_for_issue(self, issue: ScanIssue) -> None:
         """Remove a single shape associated with this diagnostic issue."""
@@ -1009,6 +1041,136 @@ class AnnotationDiagnosticsDialog(QDialog):
         self._safe_reload_current_file()
         self.apply_filter()
 
+    def _confirm_image_deletion(self, image_paths: List[str]) -> bool:
+        """Confirm image removal; returns True when accepted."""
+        if len(image_paths) == 1:
+            msg = self.tr(
+                "Move '%s' to the _delete_ folder and permanently delete its "
+                "annotation JSON file?"
+            ) % os.path.basename(image_paths[0])
+        else:
+            msg = self.tr(
+                "Move %d image(s) to the _delete_ folder and permanently "
+                "delete their annotation JSON files?"
+            ) % len(image_paths)
+
+        ans = QMessageBox.question(
+            self,
+            self.tr("Delete Image File(s)"),
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return ans == QMessageBox.StandardButton.Yes
+
+    def _remove_report_issues_for_images(
+        self, deleted_paths: Set[str]
+    ) -> None:
+        """Drop all issues for deleted image paths and refresh KPI cards."""
+        if not deleted_paths:
+            return
+
+        removed_issues = [
+            iss
+            for iss in self.report.issues
+            if iss.image_path in deleted_paths
+        ]
+        removed_ids = {id(iss) for iss in removed_issues}
+        self.report.issues = [
+            iss for iss in self.report.issues if id(iss) not in removed_ids
+        ]
+
+        dup_images_removed = sum(
+            1 for iss in removed_issues if iss.issue_type == "duplicate_image"
+        )
+        self.report.duplicate_images_count = max(
+            0, self.report.duplicate_images_count - dup_images_removed
+        )
+
+        shape_issues_removed = [
+            iss for iss in removed_issues if iss.shape_index is not None
+        ]
+        if shape_issues_removed:
+            self._refresh_issue_cards(
+                len(shape_issues_removed), shape_issues_removed
+            )
+
+        self.card_dup_images.set_value(self.report.duplicate_images_count)
+
+    def delete_images_for_issues(self, issues: List[ScanIssue]) -> None:
+        """Remove duplicate-image files (soft-delete) and their JSON labels."""
+        image_paths: List[str] = []
+        seen: Set[str] = set()
+        for iss in issues:
+            if iss.issue_type != "duplicate_image" or not iss.image_path:
+                continue
+            if iss.image_path not in seen:
+                seen.add(iss.image_path)
+                image_paths.append(iss.image_path)
+
+        if not image_paths:
+            QMessageBox.information(
+                self,
+                self.tr("Cannot Delete"),
+                self.tr(
+                    "The selected diagnostic issue(s) are not associated "
+                    "with deletable duplicate image files."
+                ),
+            )
+            return
+
+        if not self._confirm_image_deletion(image_paths):
+            return
+
+        if self._abort_if_main_dirty(set(image_paths)):
+            return
+
+        deleted_count, failed = delete_image_files(
+            image_paths=image_paths,
+            output_dir=self.get_output_dir(),
+            dataset_root=self.get_dataset_root(),
+        )
+        if deleted_count == 0:
+            QMessageBox.critical(
+                self,
+                self.tr("Error"),
+                self.tr("Failed to delete image file(s): %s")
+                % ", ".join(os.path.basename(p) for p in failed),
+            )
+            return
+
+        deleted_paths = {
+            path for path in image_paths if path not in set(failed)
+        }
+        self._remove_report_issues_for_images(deleted_paths)
+
+        if failed:
+            QMessageBox.warning(
+                self,
+                self.tr("Partial Success"),
+                self.tr(
+                    "Removed %d image(s); failed to remove %d image(s): %s\n\n"
+                    "Please reopen the image folder to refresh the file list."
+                )
+                % (
+                    deleted_count,
+                    len(failed),
+                    ", ".join(os.path.basename(p) for p in failed),
+                ),
+            )
+        else:
+            QMessageBox.information(
+                self,
+                self.tr("Delete Complete"),
+                self.tr(
+                    "Successfully removed %d image(s) to the _delete_ folder.\n\n"
+                    "Please reopen the image folder to refresh the file list."
+                )
+                % deleted_count,
+            )
+
+        self._safe_reload_current_file()
+        self.apply_filter()
+
     def _handle_shortcut_key(self, event: QtGui.QKeyEvent) -> bool:
         """Handle keyboard shortcuts in diagnostics table."""
         if event.isAutoRepeat():
@@ -1086,38 +1248,89 @@ class AnnotationDiagnosticsDialog(QDialog):
         dialog.exec()
 
     def on_auto_deduplicate(self) -> None:
-        """Batch remove duplicate shapes across dataset."""
-        if self.report.duplicate_shapes_count == 0:
+        """Batch remove duplicate shapes and duplicate image files."""
+        shape_dups = self.report.duplicate_shapes_count
+        image_dups = self.report.duplicate_images_count
+        if shape_dups == 0 and image_dups == 0:
             QMessageBox.information(
                 self,
                 self.tr("No Duplicates"),
-                self.tr("No duplicate shapes detected in current dataset."),
+                self.tr(
+                    "No duplicate shapes or duplicate image files detected "
+                    "in current dataset."
+                ),
             )
             return
 
+        parts: List[str] = []
+        if shape_dups > 0:
+            parts.append(
+                self.tr(
+                    "Remove same-label duplicate shapes (cross-class overlaps "
+                    "are kept for review)"
+                )
+            )
+        if image_dups > 0:
+            parts.append(
+                self.tr(
+                    "Move exact duplicate image files to the _delete_ folder "
+                    "and permanently delete their JSON labels (first "
+                    "occurrence is kept)"
+                )
+            )
+        confirm_msg = self.tr(
+            "Proceed with the following?\n\n- "
+        ) + "\n- ".join(parts)
+
         ans = QMessageBox.question(
             self,
-            self.tr("Auto-Deduplicate Shapes"),
-            self.tr(
-                "Remove same-label duplicates only (cross-class overlaps are kept for review)?"
-            ),
+            self.tr("Auto-Deduplicate"),
+            confirm_msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if ans != QMessageBox.StandardButton.Yes:
             return
 
         image_paths = self.get_image_file_list()
-        removed = deduplicate_dataset_shapes(
-            image_paths=image_paths,
-            output_dir=self.get_output_dir(),
-            iou_threshold=self.scanner.iou_duplicate_threshold,
-            containment_threshold=self.scanner.containment_duplicate_threshold,
-            same_label_only=True,
-        )
+        output_dir = self.get_output_dir()
+        removed_shapes = 0
+        removed_images = 0
+
+        if shape_dups > 0:
+            removed_shapes = deduplicate_dataset_shapes(
+                image_paths=image_paths,
+                output_dir=output_dir,
+                iou_threshold=self.scanner.iou_duplicate_threshold,
+                containment_threshold=self.scanner.containment_duplicate_threshold,
+                same_label_only=True,
+            )
+        if image_dups > 0:
+            removed_images = delete_duplicate_images(
+                image_paths=image_paths,
+                output_dir=output_dir,
+                dataset_root=self.get_dataset_root(),
+            )
+
+        result_parts: List[str] = []
+        if shape_dups > 0:
+            result_parts.append(
+                self.tr("Removed %d duplicate shape(s).") % removed_shapes
+            )
+        if image_dups > 0:
+            result_parts.append(
+                self.tr("Removed %d duplicate image file(s) to _delete_.")
+                % removed_images
+            )
+        result_msg = "\n".join(result_parts)
+        if removed_images > 0:
+            result_msg += "\n\n" + self.tr(
+                "Please reopen the image folder to refresh the file list."
+            )
+
         QMessageBox.information(
             self,
             self.tr("Deduplication Complete"),
-            self.tr("Successfully removed %d duplicate shape(s).") % removed,
+            result_msg,
         )
 
         self._safe_reload_current_file()

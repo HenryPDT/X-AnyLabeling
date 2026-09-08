@@ -42,6 +42,7 @@ from .qt import (
     Struct,
     StayOpenMenuFilter,
     add_actions,
+    get_image_delete_trash_dir,
     scan_all_images,
     distance,
     distance_to_line,

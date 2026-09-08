@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 import warnings
 
@@ -9,6 +10,7 @@ try:
 
     from anylabeling.views.labeling import utils
     from anylabeling.views.labeling.shape import Shape
+    from anylabeling.views.labeling.utils.qt import scan_all_images
 
     PYQT_AVAILABLE = True
 except Exception:
@@ -17,6 +19,23 @@ except Exception:
 
 @unittest.skipUnless(PYQT_AVAILABLE, "PyQt6 is required for Qt utility tests")
 class TestQtUtils(unittest.TestCase):
+    def test_scan_all_images_skips_delete_folder(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            keep_path = os.path.join(tmp_dir, "keep.jpg")
+            train_path = os.path.join(tmp_dir, "train", "active.jpg")
+            trash_path = os.path.join(tmp_dir, "_delete_", "removed.jpg")
+            os.makedirs(os.path.join(tmp_dir, "train"), exist_ok=True)
+            os.makedirs(os.path.join(tmp_dir, "_delete_"), exist_ok=True)
+            for path in (keep_path, train_path, trash_path):
+                with open(path, "wb") as handle:
+                    handle.write(b"img")
+
+            images = scan_all_images(tmp_dir)
+
+            self.assertIn(os.path.abspath(keep_path), images)
+            self.assertIn(os.path.abspath(train_path), images)
+            self.assertNotIn(os.path.abspath(trash_path), images)
+
     def test_distance_to_line_handles_2d_points_without_numpy_warning(self):
         point = QtCore.QPointF(5.0, 5.0)
         line = [QtCore.QPointF(0.0, 0.0), QtCore.QPointF(10.0, 0.0)]

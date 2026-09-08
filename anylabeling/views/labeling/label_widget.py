@@ -7376,10 +7376,20 @@ class LabelingWidget(LabelDialog):
 
         image_file = self.get_image_file()
         if osp.exists(image_file):
-            image_path, image_name = osp.split(image_file)
-            save_path = osp.join(image_path, "..", "_delete_")
+            image_name = osp.basename(image_file)
+            save_path = utils.get_image_delete_trash_dir(
+                image_file, dataset_root=self.last_open_dir
+            )
             os.makedirs(save_path, exist_ok=True)
             save_file = osp.join(save_path, image_name)
+            if osp.exists(save_file):
+                stem, ext = osp.splitext(image_name)
+                counter = 1
+                while osp.exists(save_file):
+                    save_file = osp.join(
+                        save_path, f"{stem}_{counter:03d}{ext}"
+                    )
+                    counter += 1
             shutil.move(image_file, save_file)
             logger.info(f"Image file is moved to: {osp.realpath(save_file)}")
 
@@ -7405,9 +7415,8 @@ class LabelingWidget(LabelDialog):
                     filename = self.image_list[0]
 
             self.reset_state()
-            if osp.isfile(image_path):
-                image_path = osp.dirname(image_path)
-            self.import_image_folder(image_path)
+            reload_dir = self.last_open_dir or osp.dirname(image_file)
+            self.import_image_folder(reload_dir)
 
             self.filename = filename
             if self.filename:

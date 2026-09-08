@@ -2,6 +2,7 @@ import natsort
 import os
 import os.path as osp
 from math import sqrt
+from typing import Optional
 
 import numpy as np
 from PyQt6.QtCore import Qt
@@ -9,6 +10,29 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from anylabeling.views.labeling.logger import logger
 from .image import get_supported_image_extensions
+
+IMAGE_DELETE_DIRNAME = "_delete_"
+
+
+def get_image_delete_trash_dir(
+    image_path: str, dataset_root: Optional[str] = None
+) -> str:
+    """Return the _delete_ folder for soft-deleted dataset images.
+
+    When dataset_root is set and contains the image, trash is anchored to
+    ``{dataset_root}/_delete_/``. Otherwise falls back to ``../_delete_/``
+    relative to the image directory (legacy flat-folder behavior).
+    """
+    abs_image = osp.abspath(image_path)
+    if dataset_root:
+        root = osp.abspath(dataset_root)
+        try:
+            if osp.commonpath((root, abs_image)) == root:
+                return osp.join(root, IMAGE_DELETE_DIRNAME)
+        except ValueError:
+            pass
+    image_dir = osp.dirname(abs_image)
+    return osp.abspath(osp.join(image_dir, "..", IMAGE_DELETE_DIRNAME))
 
 
 def apply_application_font(font_family):
@@ -32,7 +56,8 @@ def scan_all_images(folder_path):
         images = []
         folder_path = osp.normpath(osp.abspath(folder_path))
 
-        for root, _, files in os.walk(folder_path):
+        for root, dirs, files in os.walk(folder_path):
+            dirs[:] = [d for d in dirs if d != IMAGE_DELETE_DIRNAME]
             for file in files:
                 if file.lower().endswith(tuple(extensions)):
                     relative_path = osp.normpath(osp.join(root, file))

@@ -11,6 +11,8 @@ from anylabeling.services.annotation_diagnostics import (
     clamp_out_of_bounds_shapes,
     compute_file_md5,
     deduplicate_dataset_shapes,
+    delete_duplicate_images,
+    delete_image_files,
     export_report_to_file,
     get_label_file_path,
     move_empty_images,
@@ -285,6 +287,97 @@ def test_deduplicate_dataset_shapes_removes_duplicate():
         with open(lbl_path, "r", encoding="utf-8") as f:
             updated = json.load(f)
         assert len(updated["shapes"]) == 1
+
+
+def test_delete_duplicate_images_removes_later_occurrences():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        content = b"duplicate-image-bytes"
+        img1 = os.path.join(tmp_dir, "first.jpg")
+        img2 = os.path.join(tmp_dir, "second.jpg")
+        with open(img1, "wb") as f:
+            f.write(content)
+        with open(img2, "wb") as f:
+            f.write(content)
+
+        lbl1 = os.path.join(tmp_dir, "first.json")
+        lbl2 = os.path.join(tmp_dir, "second.json")
+        with open(lbl1, "w", encoding="utf-8") as f:
+            json.dump({"imagePath": "first.jpg", "shapes": []}, f)
+        with open(lbl2, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "imagePath": "second.jpg",
+                    "shapes": [
+                        {
+                            "label": "car",
+                            "shape_type": "rectangle",
+                            "points": [[0, 0], [10, 10]],
+                        }
+                    ],
+                },
+                f,
+            )
+
+        deleted = delete_duplicate_images([img1, img2], dataset_root=tmp_dir)
+        assert deleted == 1
+        assert os.path.isfile(img1)
+        assert os.path.isfile(lbl1)
+        assert not os.path.isfile(img2)
+        assert not os.path.isfile(lbl2)
+        trash_dir = os.path.join(tmp_dir, "_delete_")
+        assert os.path.isfile(os.path.join(trash_dir, "second.jpg"))
+
+
+def test_delete_image_files_uses_dataset_root_for_nested_images():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        nested_dir = os.path.join(tmp_dir, "train", "scene_a")
+        os.makedirs(nested_dir)
+        img_path = os.path.join(nested_dir, "sample.jpg")
+        lbl_path = os.path.join(nested_dir, "sample.json")
+        with open(img_path, "wb") as f:
+            f.write(b"img")
+        with open(lbl_path, "w", encoding="utf-8") as f:
+            json.dump({"imagePath": "sample.jpg", "shapes": []}, f)
+
+        removed, failed = delete_image_files([img_path], dataset_root=tmp_dir)
+        assert removed == 1
+        assert failed == []
+        assert not os.path.isfile(img_path)
+        assert not os.path.isfile(lbl_path)
+        assert os.path.isfile(os.path.join(tmp_dir, "_delete_", "sample.jpg"))
+        assert not os.path.isdir(os.path.join(tmp_dir, "train", "_delete_"))
+
+
+def test_delete_image_files_moves_image_and_removes_label():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        img_path = os.path.join(tmp_dir, "sample.jpg")
+        lbl_path = os.path.join(tmp_dir, "sample.json")
+        with open(img_path, "wb") as f:
+            f.write(b"img")
+        with open(lbl_path, "w", encoding="utf-8") as f:
+            json.dump({"imagePath": "sample.jpg", "shapes": []}, f)
+
+        removed, failed = delete_image_files([img_path], dataset_root=tmp_dir)
+        assert removed == 1
+        assert failed == []
+        assert not os.path.isfile(img_path)
+        assert not os.path.isfile(lbl_path)
+        trash_dir = os.path.join(tmp_dir, "_delete_")
+        assert os.path.isfile(os.path.join(trash_dir, "sample.jpg"))
+
+
+def test_delete_image_files_deduplicates_by_path():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        img_path = os.path.join(tmp_dir, "sample.jpg")
+        with open(img_path, "wb") as f:
+            f.write(b"img")
+
+        removed, failed = delete_image_files(
+            [img_path, img_path], dataset_root=tmp_dir
+        )
+        assert removed == 1
+        assert failed == []
+        assert not os.path.isfile(img_path)
 
 
 def test_purge_micro_shapes():
