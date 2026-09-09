@@ -166,6 +166,9 @@ def get_export_option_style():
             background-color: transparent;
             border-left: none;
         }}
+        QLabel:disabled {{
+            color: {t["text_secondary"]};
+        }}
 
         QLineEdit {{
             border: 1px solid {t["border"]};
@@ -174,6 +177,19 @@ def get_export_option_style():
             font-size: 13px;
             height: 36px;
             padding-left: 4px;
+        }}
+        QLineEdit:disabled {{
+            color: {t["text_secondary"]};
+        }}
+        QDoubleSpinBox, QSpinBox {{
+            border: 1px solid {t["border"]};
+            border-radius: 8;
+            background-color: {t["background_secondary"]};
+            font-size: 13px;
+            padding-left: 4px;
+        }}
+        QDoubleSpinBox:disabled, QSpinBox:disabled {{
+            color: {t["text_secondary"]};
         }}
         QLineEdit:hover {{
             background-color: {t["background_hover"]};

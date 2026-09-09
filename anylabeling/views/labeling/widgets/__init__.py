@@ -28,7 +28,6 @@ from .model_dropdown_widget import SearchBar
 from .navigator_widget import NavigatorDialog
 from .overview_dialog import OverviewDialog
 from .dataset_stats_dialog import DatasetStatsDialog
-from .dataset_split_dialog import DatasetSplitDialog
 from .polygon_sides_dialog import PolygonSidesDialog
 from .ppocr_dialog import PPOCRDialog
 from .popup import Popup

@@ -1533,8 +1533,18 @@ class LabelConverter:
 
         return is_emtpy_file
 
-    def custom_to_coco(self, image_list, input_path, output_path, mode):
+    def custom_to_coco(
+        self,
+        image_list,
+        input_path,
+        output_path,
+        mode,
+        output_filename=None,
+        split_info=None,
+    ):
         coco_data = self.get_coco_data(mode)
+        if split_info is not None:
+            coco_data["info"]["split"] = dict(split_info)
 
         if mode == "rectangle":
             for i, class_name in enumerate(self.classes):
@@ -1772,7 +1782,9 @@ class LabelConverter:
 
             image_id += 1
 
-        if mode == "rectangle":
+        if output_filename is not None:
+            output_file = osp.join(output_path, output_filename)
+        elif mode == "rectangle":
             output_file = osp.join(output_path, "coco_detection.json")
         elif mode == "polygon":
             output_file = osp.join(

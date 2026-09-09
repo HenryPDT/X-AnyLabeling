@@ -19,9 +19,220 @@ from anylabeling.views.labeling.label_converter import (
     PoseGroupError,
 )
 from anylabeling.views.labeling.logger import logger
+from anylabeling.views.labeling.utils.split import (
+    build_dataset_yaml,
+    collect_labels_and_names,
+    effective_images_for_export,
+    stratified_split,
+    write_list_file,
+)
 from anylabeling.views.labeling.widgets import Popup
 from anylabeling.views.labeling.utils.qt import new_icon_path
 from anylabeling.views.labeling.utils.style import *
+
+
+# Train/val split option (export-time, cf. DarkMark ExportDialog):
+# opt-in section inside YOLO/COCO export dialogs. Defaults preserve
+# today's single-export behavior.
+_SPLIT_MIN_RATIO = 0.5
+_SPLIT_MAX_RATIO = 0.95
+_SPLIT_DEFAULT_RATIO = 0.8
+_SPLIT_DEFAULT_SEED = 42
+
+
+def _load_split_prefs(widget):
+    """Return persisted (enabled, ratio, seed) split prefs."""
+    enabled, ratio, seed = False, _SPLIT_DEFAULT_RATIO, _SPLIT_DEFAULT_SEED
+    try:
+        settings = getattr(widget, "settings", None)
+        if settings is None:
+            return enabled, ratio, seed
+        enabled = settings.value("export_split/enabled", False, type=bool)
+        ratio = float(settings.value("export_split/train_ratio", ratio))
+        seed = int(settings.value("export_split/seed", seed))
+    except (TypeError, ValueError):
+        pass
+    return bool(enabled), ratio, seed
+
+
+def _save_split_prefs(widget, enabled, ratio, seed):
+    try:
+        settings = getattr(widget, "settings", None)
+        if settings is None:
+            return
+        settings.setValue("export_split/enabled", bool(enabled))
+        settings.setValue("export_split/train_ratio", float(ratio))
+        settings.setValue("export_split/seed", int(seed))
+    except Exception as err:
+        logger.warning(f"Could not persist split prefs: {err}")
+
+
+def _create_split_section(
+    dialog,
+    widget,
+    image_provider,
+    output_dir_provider,
+    skip_empty_provider=None,
+):
+    """Build the shared train/val split dialog section.
+
+    Returns a dict with the widgets plus a ``refresh`` callable that
+    recomputes the Train/Val preview. Callers wire ``refresh`` to
+    their own option toggles (e.g. skip-empty changes the counts).
+    """
+    enable_checkbox = QtWidgets.QCheckBox(
+        QCoreApplication.translate("LabelingWidget", "Enable train/val split?")
+    )
+    ratio_spin = QtWidgets.QDoubleSpinBox(dialog)
+    ratio_spin.setRange(_SPLIT_MIN_RATIO, _SPLIT_MAX_RATIO)
+    ratio_spin.setSingleStep(0.05)
+    ratio_spin.setDecimals(2)
+    seed_spin = QtWidgets.QSpinBox(dialog)
+    seed_spin.setRange(0, 999999)
+    preview_label = QtWidgets.QLabel("", dialog)
+    preview_label.setWordWrap(True)
+    preview_label.setStyleSheet("opacity: 0.7; font-size: 11px;")
+
+    saved_enabled, saved_ratio, saved_seed = _load_split_prefs(widget)
+    enable_checkbox.setChecked(saved_enabled)
+    ratio_spin.setValue(
+        max(_SPLIT_MIN_RATIO, min(_SPLIT_MAX_RATIO, saved_ratio))
+    )
+    seed_spin.setValue(max(0, min(999999, saved_seed)))
+
+    def refresh():
+        if not enable_checkbox.isChecked():
+            preview_label.setText(
+                QCoreApplication.translate(
+                    "LabelingWidget", "Split disabled — single export."
+                )
+            )
+            return
+        try:
+            images = list(image_provider() or [])
+            output_dir = output_dir_provider()
+            labels, _ = collect_labels_and_names(images, output_dir=output_dir)
+            skip_empty = bool(
+                skip_empty_provider() if skip_empty_provider else False
+            )
+            effective = effective_images_for_export(images, labels, skip_empty)
+            result = stratified_split(
+                effective,
+                train_ratio=ratio_spin.value(),
+                seed=seed_spin.value(),
+                labels_by_image=labels,
+            )
+            preview_label.setText(
+                QCoreApplication.translate(
+                    "LabelingWidget", "→ Train: {train} | Val: {val}"
+                ).format(train=len(result.train), val=len(result.val))
+            )
+        except Exception as err:
+            logger.warning(f"Could not preview split: {err}")
+
+    enable_checkbox.toggled.connect(lambda _c: refresh())
+    ratio_spin.valueChanged.connect(lambda _v: refresh())
+    seed_spin.valueChanged.connect(lambda _v: refresh())
+    refresh()
+
+    row = QtWidgets.QHBoxLayout()
+    row.setSpacing(8)
+    ratio_label = QtWidgets.QLabel(
+        QCoreApplication.translate("LabelingWidget", "Train ratio")
+    )
+    row.addWidget(ratio_label)
+    row.addWidget(ratio_spin)
+    seed_label = QtWidgets.QLabel(
+        QCoreApplication.translate("LabelingWidget", "Seed")
+    )
+    row.addWidget(seed_label)
+    row.addWidget(seed_spin)
+    row.addStretch(1)
+
+    def sync_enabled(active):
+        ratio_label.setEnabled(bool(active))
+        ratio_spin.setEnabled(bool(active))
+        seed_label.setEnabled(bool(active))
+        seed_spin.setEnabled(bool(active))
+
+    enable_checkbox.toggled.connect(sync_enabled)
+    sync_enabled(saved_enabled)
+
+    return {
+        "enable": enable_checkbox,
+        "ratio": ratio_spin,
+        "seed": seed_spin,
+        "preview": preview_label,
+        "row": row,
+        "refresh": refresh,
+    }
+
+
+def _coco_split_filename(mode, subset):
+    stems = {
+        "rectangle": "coco_detection",
+        "polygon": "coco_instance_segmentation",
+        "pose": "coco_keypoints",
+    }
+    return f"{stems.get(mode, 'coco')}_{subset}.json"
+
+
+def _plan_export_split(
+    image_list, output_dir, train_ratio, seed, skip_empty=False
+):
+    """Partition the exported image set; raise ValueError if unusable.
+
+    Returns ``(split_result, class_names, split_info)`` where
+    ``split_info`` is the reproducibility provenance recorded in
+    dataset.yaml / COCO info.
+    """
+    labels_by_image, names = collect_labels_and_names(
+        image_list, output_dir=output_dir
+    )
+    effective = effective_images_for_export(
+        image_list, labels_by_image, skip_empty
+    )
+    if len(effective) < 2:
+        raise ValueError(
+            "Train/val split needs at least 2 exported images "
+            f"(found {len(effective)})."
+        )
+    result = stratified_split(
+        effective,
+        train_ratio=train_ratio,
+        seed=seed,
+        labels_by_image=labels_by_image,
+    )
+    if not result.train or not result.val:
+        raise ValueError(
+            "Train/val split produced an empty subset "
+            f"(train={len(result.train)}, val={len(result.val)}). "
+            "Add more images or adjust the ratio."
+        )
+    split_info = {
+        "enabled": True,
+        "train_ratio": result.train_ratio,
+        "seed": result.seed,
+    }
+    return result, names, split_info
+
+
+def _make_split_path_toggler(path_edit, default_path):
+    """Append '_split' to the export path while split is enabled."""
+    state = {"adjusted": False, "previous": default_path}
+
+    def on_toggled(checked):
+        current = path_edit.text().rstrip("/\\")
+        if checked:
+            if not current.endswith("_split"):
+                state["previous"] = path_edit.text()
+                path_edit.setText(current + "_split")
+                state["adjusted"] = True
+        elif state["adjusted"]:
+            path_edit.setText(state["previous"])
+            state["adjusted"] = False
+
+    return on_toggled
 
 
 class ExportThread(QThread):
@@ -35,6 +246,9 @@ class ExportThread(QThread):
         save_path,
         mode,
         prefix=None,
+        split_lists=None,
+        split_info=None,
+        save_images=False,
     ):
         super().__init__()
         self.converter = converter
@@ -43,6 +257,19 @@ class ExportThread(QThread):
         self.save_path = save_path
         self.mode = mode
         self.prefix = prefix
+        # Export-time train/val split (COCO): ((train imgs, val imgs)).
+        # When set, two JSONs land in <save_path>/annotations/ and (if
+        # save_images) copies in <save_path>/{train,val}2017/.
+        self.split_lists = split_lists
+        self.split_info = split_info
+        self.save_images = save_images
+
+    def _copy_coco_images(self, images, dest_dir):
+        os.makedirs(dest_dir, exist_ok=True)
+        for image_file in images:
+            dest = osp.join(dest_dir, osp.basename(image_file))
+            if osp.abspath(image_file) != osp.abspath(dest):
+                shutil.copy(image_file, dest)
 
     def run(self):
         try:
@@ -67,6 +294,33 @@ class ExportThread(QThread):
                 self.converter.custom_to_odvg(
                     self.image_list, self.label_dir_path, self.save_path
                 )
+            elif self.split_lists is not None:
+                train_images, val_images = self.split_lists
+                annotations_dir = osp.join(self.save_path, "annotations")
+                os.makedirs(annotations_dir, exist_ok=True)
+                self.converter.custom_to_coco(
+                    train_images,
+                    self.label_dir_path,
+                    annotations_dir,
+                    self.mode,
+                    output_filename=_coco_split_filename(self.mode, "train"),
+                    split_info=self.split_info,
+                )
+                self.converter.custom_to_coco(
+                    val_images,
+                    self.label_dir_path,
+                    annotations_dir,
+                    self.mode,
+                    output_filename=_coco_split_filename(self.mode, "val"),
+                    split_info=self.split_info,
+                )
+                if self.save_images:
+                    self._copy_coco_images(
+                        train_images, osp.join(self.save_path, "train2017")
+                    )
+                    self._copy_coco_images(
+                        val_images, osp.join(self.save_path, "val2017")
+                    )
             else:
                 self.converter.custom_to_coco(
                     self.image_list,
@@ -74,6 +328,10 @@ class ExportThread(QThread):
                     self.save_path,
                     self.mode,
                 )
+                if self.save_images:
+                    self._copy_coco_images(
+                        self.image_list, osp.join(self.save_path, "images")
+                    )
             self.finished.emit(True, "")
         except Exception as e:
             self.finished.emit(False, str(e))
@@ -180,6 +438,13 @@ def _validate_yolo_export_path(source_root, save_path, allow_same_dir=False):
 
 
 def _get_yolo_export_files(image_list, source_root, save_path, layout=None):
+    """Map images to YOLO label/image destinations.
+
+    Without ``layout`` this preserves ``relpath`` under ``save_path``
+    (single export). With ``layout`` (``"train"``/``"val"``) it builds
+    the YOLOv5 split layout: ``<save_path>/labels/<layout>/...`` for
+    labels and ``<save_path>/images/<layout>/...`` for image copies.
+    """
     export_files = []
     label_destinations = {}
     is_in_place = osp.realpath(save_path) == osp.realpath(source_root)
@@ -197,6 +462,13 @@ def _get_yolo_export_files(image_list, source_root, save_path, layout=None):
         if is_in_place:
             dst_file = osp.splitext(image_file)[0] + ".txt"
             image_dst = image_file
+        elif layout is not None:
+            dst_file = osp.join(
+                save_path, "labels", layout, relative_label_path
+            )
+            image_dst = osp.join(
+                save_path, "images", layout, relative_image_path
+            )
         else:
             dst_file = osp.join(save_path, relative_label_path)
             image_dst = osp.join(save_path, relative_image_path)
@@ -369,8 +641,27 @@ def export_yolo_annotation(self, mode):  # noqa: C901
     skip_empty_files_checkbox.setChecked(False)
     layout.addWidget(skip_empty_files_checkbox)
 
+    split_section = _create_split_section(
+        dialog,
+        self,
+        image_provider=lambda: (
+            list(self.image_list) if self.image_list else [self.filename]
+        ),
+        output_dir_provider=lambda: getattr(self, "output_dir", None),
+        skip_empty_provider=skip_empty_files_checkbox.isChecked,
+    )
+    layout.addWidget(split_section["enable"])
+    layout.addLayout(split_section["row"])
+    layout.addWidget(split_section["preview"])
+    skip_empty_files_checkbox.toggled.connect(
+        lambda _c: split_section["refresh"]()
+    )
+
     in_place = False
     last_custom_path = default_labels_path
+    split_path_toggler = _make_split_path_toggler(
+        path_edit, default_labels_path
+    )
 
     def on_in_place_toggled(checked):
         nonlocal in_place, last_custom_path
@@ -382,13 +673,30 @@ def export_yolo_annotation(self, mode):  # noqa: C901
             path_button.setEnabled(False)
             save_images_checkbox.setChecked(False)
             save_images_checkbox.setEnabled(False)
+            split_section["enable"].setChecked(False)
+            split_section["enable"].setEnabled(False)
         else:
             path_edit.setText(last_custom_path)
             path_edit.setEnabled(True)
             path_button.setEnabled(True)
             save_images_checkbox.setEnabled(True)
+            split_section["enable"].setEnabled(True)
 
     in_place_checkbox.toggled.connect(on_in_place_toggled)
+
+    def on_split_toggled(checked):
+        if checked:
+            in_place_checkbox.setChecked(False)
+            in_place_checkbox.setEnabled(False)
+        else:
+            in_place_checkbox.setEnabled(True)
+        split_path_toggler(checked)
+
+    split_section["enable"].toggled.connect(on_split_toggled)
+    if split_section["enable"].isChecked():
+        # Persisted pref was on: apply split-mode UI state.
+        on_split_toggled(True)
+        split_section["refresh"]()
 
     button_layout = QHBoxLayout()
     button_layout.setContentsMargins(0, 16, 0, 0)
@@ -423,15 +731,42 @@ def export_yolo_annotation(self, mode):  # noqa: C901
     )
     save_images = save_images_checkbox.isChecked() and not is_in_place
     skip_empty_files = skip_empty_files_checkbox.isChecked()
+    split_enabled = split_section["enable"].isChecked() and not is_in_place
+    split_ratio = split_section["ratio"].value()
+    split_seed = split_section["seed"].value()
+    _save_split_prefs(self, split_enabled, split_ratio, split_seed)
     image_list = self.image_list if self.image_list else [self.filename]
+
+    split_result = None
+    split_names: list = []
+    split_info = None
+    if split_enabled:
+        try:
+            split_result, split_names, split_info = _plan_export_split(
+                image_list,
+                getattr(self, "output_dir", None),
+                split_ratio,
+                split_seed,
+                skip_empty_files,
+            )
+        except ValueError as error:
+            _show_yolo_export_error(self, None, error)
+            return
 
     try:
         _validate_yolo_export_path(
             source_root, save_path, allow_same_dir=is_in_place
         )
-        export_files = _get_yolo_export_files(
-            image_list, source_root, save_path
-        )
+        if split_result is not None:
+            export_files = _get_yolo_export_files(
+                split_result.train, source_root, save_path, layout="train"
+            ) + _get_yolo_export_files(
+                split_result.val, source_root, save_path, layout="val"
+            )
+        else:
+            export_files = _get_yolo_export_files(
+                image_list, source_root, save_path
+            )
     except ValueError as error:
         _show_yolo_export_error(self, None, error)
         return
@@ -544,7 +879,7 @@ def export_yolo_annotation(self, mode):  # noqa: C901
         QCoreApplication.translate("LabelingWidget", "Exporting..."),
         QCoreApplication.translate("LabelingWidget", "Cancel"),
         0,
-        len(image_list),
+        len(export_files),
         self,
     )
     progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
@@ -558,6 +893,7 @@ def export_yolo_annotation(self, mode):  # noqa: C901
     )
 
     current_image_file = None
+    skipped_empty: set = set()
     try:
         for i, (image_file, dst_file, image_dst) in enumerate(export_files):
             current_image_file = image_file
@@ -579,6 +915,8 @@ def export_yolo_annotation(self, mode):  # noqa: C901
 
             if skip_empty_files and is_empty_file and osp.exists(dst_file):
                 os.remove(dst_file)
+            if skip_empty_files and is_empty_file:
+                skipped_empty.add(image_file)
 
             progress_dialog.setValue(i)
             if progress_dialog.wasCanceled():
@@ -605,6 +943,63 @@ def export_yolo_annotation(self, mode):  # noqa: C901
                         f.write(classes_text)
             except Exception as err:
                 logger.warning(f"Could not auto-write classes.txt: {err}")
+
+        if split_result is not None:
+            # YOLOv5 split layout: images/{train,val}, labels/{train,val},
+            # train.txt/val.txt, dataset.yaml (+ split provenance).
+            names = (
+                list(converter.classes)
+                if (
+                    hasattr(converter, "classes")
+                    and isinstance(converter.classes, (list, tuple))
+                    and converter.classes
+                )
+                else split_names
+            )
+            image_dests = {
+                src: image_dst for src, _label, image_dst in export_files
+            }
+            # Labels filtered out as empty mid-export must not linger in
+            # the split lists (e.g. shapes outside converter.classes).
+            final_train = [
+                p for p in split_result.train if p not in skipped_empty
+            ]
+            final_val = [p for p in split_result.val if p not in skipped_empty]
+            if save_images:
+                train_images = [image_dests[p] for p in final_train]
+                val_images = [image_dests[p] for p in final_val]
+                train_ref = osp.join(save_path, "images", "train")
+                val_ref = osp.join(save_path, "images", "val")
+            else:
+                train_images = list(final_train)
+                val_images = list(final_val)
+                train_ref = osp.join(save_path, "train.txt")
+                val_ref = osp.join(save_path, "val.txt")
+            write_list_file(
+                osp.join(save_path, "train.txt"),
+                train_images,
+                relto=save_path if save_images else None,
+            )
+            write_list_file(
+                osp.join(save_path, "val.txt"),
+                val_images,
+                relto=save_path if save_images else None,
+            )
+            try:
+                with open(
+                    osp.join(save_path, "dataset.yaml"), "w", encoding="utf-8"
+                ) as f:
+                    f.write(
+                        build_dataset_yaml(
+                            train_ref,
+                            val_ref,
+                            names,
+                            project_root=save_path,
+                            split_info=split_info,
+                        )
+                    )
+            except Exception as err:
+                logger.warning(f"Could not write dataset.yaml: {err}")
 
         current_image_file = None
         progress_dialog.close()
@@ -825,7 +1220,7 @@ def export_voc_annotation(self, mode):
         popup.show_popup(self, position="center")
 
 
-def export_coco_annotation(self, mode):
+def export_coco_annotation(self, mode):  # noqa: C901
     if not _check_filename_exist(self):
         return
 
@@ -915,6 +1310,35 @@ def export_coco_annotation(self, mode):
     path_layout.addLayout(path_input_layout)
     layout.addLayout(path_layout)
 
+    options_label = QtWidgets.QLabel(self.tr("Export Options"))
+    layout.addWidget(options_label)
+
+    save_images_checkbox = QtWidgets.QCheckBox(self.tr("Save with images?"))
+    save_images_checkbox.setChecked(False)
+    layout.addWidget(save_images_checkbox)
+
+    split_section = _create_split_section(
+        dialog,
+        self,
+        image_provider=lambda: (
+            list(self.image_list) if self.image_list else [self.filename]
+        ),
+        output_dir_provider=lambda: label_dir_path,
+    )
+    layout.addWidget(split_section["enable"])
+    layout.addLayout(split_section["row"])
+    layout.addWidget(split_section["preview"])
+
+    default_annotations_path = path_edit.text()
+    on_coco_split_toggled = _make_split_path_toggler(
+        path_edit, default_annotations_path
+    )
+
+    split_section["enable"].toggled.connect(on_coco_split_toggled)
+    if split_section["enable"].isChecked():
+        on_coco_split_toggled(True)
+        split_section["refresh"]()
+
     button_layout = QHBoxLayout()
     button_layout.setContentsMargins(0, 16, 0, 0)
     button_layout.setSpacing(8)
@@ -970,6 +1394,29 @@ def export_coco_annotation(self, mode):
         os.makedirs(save_path)
 
     image_list = self.image_list if self.image_list else [self.filename]
+    save_images = save_images_checkbox.isChecked()
+    split_enabled = split_section["enable"].isChecked()
+    split_ratio = split_section["ratio"].value()
+    split_seed = split_section["seed"].value()
+    _save_split_prefs(self, split_enabled, split_ratio, split_seed)
+
+    split_lists = None
+    split_info = None
+    if split_enabled:
+        try:
+            split_result, _, split_info = _plan_export_split(
+                image_list, label_dir_path, split_ratio, split_seed
+            )
+        except ValueError as error:
+            popup = Popup(
+                str(error),
+                self,
+                icon=new_icon_path("error", "svg"),
+            )
+            popup.show_popup(self, position="center")
+            return
+        split_lists = (split_result.train, split_result.val)
+
     progress_dialog = QProgressDialog(
         self.tr("Exporting..."), self.tr("Cancel"), 0, 0, self
     )
@@ -981,7 +1428,14 @@ def export_coco_annotation(self, mode):
     progress_dialog.setStyleSheet(get_progress_dialog_style())
 
     self.export_thread = ExportThread(
-        converter, image_list, label_dir_path, save_path, mode
+        converter,
+        image_list,
+        label_dir_path,
+        save_path,
+        mode,
+        split_lists=split_lists,
+        split_info=split_info,
+        save_images=save_images,
     )
 
     def on_export_finished(success, error_msg):

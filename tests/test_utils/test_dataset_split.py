@@ -7,8 +7,10 @@ from anylabeling.views.labeling.utils.split import (
     collect_labels_and_names,
     collect_names,
     dominant_label_for_image,
+    effective_images_for_export,
     scene_key_for_image,
     stratified_split,
+    write_list_file,
 )
 
 
@@ -179,3 +181,40 @@ def test_stratified_split_flat_ignores_folder(tmp_path):
     )
     assert sorted(foldered.train) == sorted(ungrouped.train)
     assert sorted(foldered.val) == sorted(ungrouped.val)
+
+
+def test_effective_images_for_export_drops_unlabeled_when_skipping(tmp_path):
+    imgs = [str(tmp_path / "a.jpg"), str(tmp_path / "b.jpg")]
+    labels = {imgs[0]: "cat", imgs[1]: UNLABELED}
+    assert effective_images_for_export(imgs, labels, True) == [imgs[0]]
+    assert effective_images_for_export(imgs, labels, False) == imgs
+    assert effective_images_for_export(imgs, None, True) == imgs
+
+
+def test_build_dataset_yaml_records_split_provenance(tmp_path):
+    text = build_dataset_yaml(
+        str(tmp_path / "images" / "train"),
+        str(tmp_path / "images" / "val"),
+        ["cat"],
+        project_root=str(tmp_path),
+        split_info={"enabled": True, "train_ratio": 0.8, "seed": 42},
+    )
+    parsed = yaml.safe_load(text)
+    assert parsed["train"] == "images/train"
+    assert parsed["val"] == "images/val"
+    assert parsed["split"] == {
+        "enabled": True,
+        "train_ratio": 0.8,
+        "seed": 42,
+    }
+
+
+def test_write_list_file_relative_to_root(tmp_path):
+    img = tmp_path / "images" / "train" / "a.jpg"
+    img.parent.mkdir(parents=True)
+    img.touch()
+    list_file = tmp_path / "train.txt"
+    write_list_file(str(list_file), [str(img)], relto=str(tmp_path))
+    assert list_file.read_text(encoding="utf-8").splitlines() == [
+        "images/train/a.jpg"
+    ]

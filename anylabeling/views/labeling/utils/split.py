@@ -1,8 +1,8 @@
-"""Train/val split builder (Qt-free, additive).
+"""Train/val split helpers (Qt-free).
 
 Deterministic seeded split with optional stratification by scene
-(parent folder) and dominant class. Pure functions for testing;
-dialog handles file I/O.
+(parent folder) and dominant class. Pure functions shared by the
+export-time split option in YOLO/COCO export dialogs.
 """
 
 from __future__ import annotations
@@ -37,14 +37,14 @@ class SplitResult:
 
 
 def _coerce_ratio(train_ratio: Any) -> float:
-    """Validate ratio and clamp to [0.1, 0.9]."""
+    """Validate ratio and clamp to [0.1, 0.95]."""
     try:
         ratio = float(train_ratio)
     except (TypeError, ValueError) as exc:
         raise ValueError(
             f"Invalid train_ratio {train_ratio!r}: {exc}"
         ) from exc
-    return max(0.1, min(0.9, ratio))
+    return max(0.1, min(0.95, ratio))
 
 
 def _coerce_seed(seed: Any) -> int:
@@ -66,7 +66,7 @@ def stratified_split(
 
     Args:
         image_paths: Full list of image files.
-        train_ratio: Fraction for train (0.1-0.9, else clamped).
+        train_ratio: Fraction for train (0.1-0.95, else clamped).
         seed: Random seed for reproducibility.
         labels_by_image: Optional image -> dominant label for
             stratification. When None, plain shuffled split.
@@ -125,8 +125,16 @@ def build_dataset_yaml(
     val_list_path: str,
     names: List[str],
     project_root: Optional[str] = None,
+    split_info: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Build minimal YOLO dataset.yaml content (safe-quoted)."""
+    """Build minimal YOLO dataset.yaml content (safe-quoted).
+
+    train/val refs may be list files or image directories (e.g.
+    ``images/train`` for the YOLOv5 split layout). When
+    ``split_info`` is given (e.g. ``{"enabled": True,
+    "train_ratio": 0.8, "seed": 42}``) it is recorded under the
+    ``split`` key for reproducibility provenance.
+    """
     if project_root:
         try:
             train_ref = os.path.relpath(train_list_path, project_root)
@@ -134,7 +142,7 @@ def build_dataset_yaml(
         except (TypeError, ValueError):
             train_ref = train_list_path
             val_ref = val_list_path
-        payload = {
+        payload: Dict[str, Any] = {
             "path": project_root,
             "train": train_ref,
             "val": val_ref,
@@ -148,6 +156,8 @@ def build_dataset_yaml(
             "nc": len(names),
             "names": list(names),
         }
+    if split_info is not None:
+        payload["split"] = dict(split_info)
     text = yaml.safe_dump(
         payload, sort_keys=False, allow_unicode=True, default_flow_style=False
     )
@@ -156,14 +166,47 @@ def build_dataset_yaml(
     return text
 
 
-def write_list_file(file_path: str, image_paths: List[str]) -> None:
-    """Write one absolute image path per line (creates dirs)."""
+def write_list_file(
+    file_path: str,
+    image_paths: List[str],
+    relto: Optional[str] = None,
+) -> None:
+    """Write one image path per line (creates dirs).
+
+    Paths are absolute by default; when ``relto`` is given they are
+    written relative to that directory (portable export lists).
+    """
     directory = os.path.dirname(os.path.abspath(file_path))
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         for img in image_paths:
+            if relto is not None:
+                try:
+                    f.write(
+                        os.path.relpath(os.path.abspath(img), relto) + "\n"
+                    )
+                    continue
+                except (TypeError, ValueError):
+                    pass
             f.write(os.path.abspath(img) + "\n")
+
+
+def effective_images_for_export(
+    image_paths: List[str],
+    labels_by_image: Optional[Dict[str, str]],
+    skip_empty: bool,
+) -> List[str]:
+    """Return the images that will actually produce labels.
+
+    When ``skip_empty`` is set, drop images whose dominant label is
+    :data:`UNLABELED` (missing/empty annotation) so the split counts
+    match the exported artifact set.
+    """
+    images = list(image_paths)
+    if not skip_empty or not labels_by_image:
+        return images
+    return [img for img in images if labels_by_image.get(img) != UNLABELED]
 
 
 def dominant_label_for_image(
