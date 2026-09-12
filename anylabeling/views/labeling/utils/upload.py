@@ -192,6 +192,7 @@ def upload_vlm_r1_ovd_annotation(self):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -218,6 +219,7 @@ def upload_vlm_r1_ovd_annotation(self):
             )
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -617,6 +619,7 @@ def upload_mmgd_annotation(self, LABEL_OPACITY):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -639,6 +642,7 @@ def upload_mmgd_annotation(self, LABEL_OPACITY):
             )
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -916,6 +920,7 @@ def upload_mask_annotation(self, LABEL_OPACITY):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -942,6 +947,7 @@ def upload_mask_annotation(self, LABEL_OPACITY):
             )
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -1074,6 +1080,7 @@ def upload_dota_annotation(self):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -1098,6 +1105,7 @@ def upload_dota_annotation(self):
             )
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -1128,6 +1136,198 @@ def upload_dota_annotation(self):
             icon=new_icon_path("error", "svg"),
         )
         popup.show_popup(self, position="center")
+
+
+def _upload_quad_txt_annotation(self, convert_fn):
+    """Shared folder-picker + per-image loop for DOTA/WPOD txt uploads."""
+    if not _check_filename_exist(self):
+        return
+
+    dialog = QtWidgets.QDialog(self)
+    dialog.setWindowTitle(self.tr("Upload Options"))
+    dialog.setMinimumWidth(500)
+    dialog.setStyleSheet(get_export_option_style())
+
+    layout = QVBoxLayout()
+    layout.setContentsMargins(24, 24, 24, 24)
+    layout.setSpacing(16)
+
+    path_layout = QVBoxLayout()
+    path_label = QtWidgets.QLabel(self.tr("Select Upload Folder"))
+    path_layout.addWidget(path_label)
+
+    path_input_layout = QHBoxLayout()
+    path_input_layout.setSpacing(8)
+
+    path_edit = QtWidgets.QLineEdit()
+    path_edit.setText(osp.dirname(osp.dirname(self.filename)))
+
+    def browse_upload_folder():
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            self.tr("Select Upload Folder"),
+            path_edit.text(),
+            QtWidgets.QFileDialog.Option.ShowDirsOnly
+            | QtWidgets.QFileDialog.Option.DontResolveSymlinks
+            | QtWidgets.QFileDialog.Option.DontUseNativeDialog,
+        )
+        if path:
+            path_edit.setText(path)
+
+    path_button = QtWidgets.QPushButton(self.tr("Browse"))
+    path_button.clicked.connect(browse_upload_folder)
+    path_button.setStyleSheet(get_cancel_btn_style())
+
+    path_input_layout.addWidget(path_edit)
+    path_input_layout.addWidget(path_button)
+    path_layout.addLayout(path_input_layout)
+    layout.addLayout(path_layout)
+
+    # Button section
+    button_layout = QHBoxLayout()
+    button_layout.setContentsMargins(0, 16, 0, 0)
+    button_layout.setSpacing(8)
+
+    cancel_button = QtWidgets.QPushButton(self.tr("Cancel"))
+    cancel_button.clicked.connect(dialog.reject)
+    cancel_button.setStyleSheet(get_cancel_btn_style())
+
+    ok_button = QtWidgets.QPushButton(self.tr("OK"))
+    ok_button.clicked.connect(dialog.accept)
+    ok_button.setStyleSheet(get_ok_btn_style())
+
+    button_layout.addStretch()
+    button_layout.addWidget(cancel_button)
+    button_layout.addWidget(ok_button)
+    layout.addLayout(button_layout)
+
+    dialog.setLayout(layout)
+    result = dialog.exec()
+
+    if not result:
+        return
+
+    label_dir_path = path_edit.text()
+    label_index = {}
+    for root, _, files in os.walk(label_dir_path):
+        for name in files:
+            if name.endswith(".txt") and name not in label_index:
+                label_index[name] = osp.join(root, name)
+    output_dir_path = self.output_dir if self.output_dir else None
+    converter = LabelConverter()
+
+    response = QtWidgets.QMessageBox()
+    response.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+    response.setWindowTitle(self.tr("Warning"))
+    response.setText(self.tr("Current annotation will be lost"))
+    response.setInformativeText(
+        self.tr(
+            "You are going to upload new annotations to this task. Continue?"
+        )
+    )
+    response.setStandardButtons(
+        QtWidgets.QMessageBox.StandardButton.Cancel
+        | QtWidgets.QMessageBox.StandardButton.Ok
+    )
+    response.setStyleSheet(get_msg_box_style())
+
+    if response.exec() != QtWidgets.QMessageBox.StandardButton.Ok:
+        return
+
+    image_list = self.image_list if self.image_list else [self.filename]
+    progress_dialog = QProgressDialog(
+        self.tr("Uploading..."), self.tr("Cancel"), 0, len(image_list), self
+    )
+    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+    progress_dialog.setWindowTitle(self.tr("Progress"))
+    progress_dialog.setMinimumWidth(500)
+    progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
+    progress_dialog.setStyleSheet(
+        get_progress_dialog_style(color="#1d1d1f", height=20)
+    )
+
+    try:
+        imported, skipped = 0, 0
+        for i, image_path in enumerate(image_list):
+            image_filename = osp.basename(image_path)
+            label_filename = osp.splitext(image_filename)[0] + ".txt"
+            input_file = label_index.get(label_filename)
+            if input_file is None:
+                skipped += 1
+                progress_dialog.setValue(i)
+                QtWidgets.QApplication.processEvents()
+                if progress_dialog.wasCanceled():
+                    break
+                continue
+
+            dest_dir = output_dir_path or osp.dirname(image_path)
+            os.makedirs(dest_dir, exist_ok=True)
+            output_file = osp.join(
+                dest_dir, osp.splitext(image_filename)[0] + ".json"
+            )
+
+            convert_fn(
+                converter,
+                input_file=input_file,
+                output_file=output_file,
+                image_file=image_path,
+            )
+            imported += 1
+
+            progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
+            if progress_dialog.wasCanceled():
+                break
+
+        progress_dialog.close()
+        template = self.tr(
+            "Uploading annotations successfully!\n"
+            "Imported: %d, skipped (no label found): %d\n"
+            "Results have been saved to:\n"
+            "%s"
+        )
+        message_text = template % (
+            imported,
+            skipped,
+            output_dir_path or label_dir_path,
+        )
+        popup = Popup(
+            message_text,
+            self,
+            icon=new_icon_path("copy-green", "svg"),
+        )
+        popup.show_popup(self, popup_height=65, position="center")
+
+        _refresh_after_annotation_upload(self)
+
+    except Exception as e:
+        progress_dialog.close()
+        message = f"Error occurred while uploading annotations: {str(e)}"
+        logger.error(message)
+
+        popup = Popup(
+            message,
+            self,
+            icon=new_icon_path("error", "svg"),
+        )
+        popup.show_popup(self, position="center")
+
+
+def upload_wpod_annotation(self):
+    """Upload WPOD/IWPOD quad annotations (``4,x1..x4,y1..y4,,``).
+
+    Imports each sibling ``*.txt`` as ``quadrilateral`` shapes with the
+    fixed ``plate`` label; out-of-range coords are clamped to [0,1].
+    """
+    _upload_quad_txt_annotation(
+        self,
+        lambda converter, input_file, output_file, image_file: converter.wpod_to_custom(
+            input_file=input_file,
+            output_file=output_file,
+            image_file=image_file,
+        ),
+    )
 
 
 def upload_coco_annotation(self, mode):
@@ -1311,6 +1511,7 @@ def upload_voc_annotation(self, mode):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -1334,6 +1535,7 @@ def upload_voc_annotation(self, mode):
             )
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -1674,6 +1876,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -1731,6 +1934,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
 
             if not input_file:
                 progress_dialog.setValue(i)
+                QtWidgets.QApplication.processEvents()
                 continue
 
             if self.output_dir:
@@ -1785,6 +1989,7 @@ def upload_yolo_annotation(self, mode, LABEL_OPACITY):
 
             uploaded_count += 1
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 

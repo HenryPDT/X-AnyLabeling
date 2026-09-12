@@ -14,6 +14,7 @@ from anylabeling.views.labeling.logger import logger
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"]
 LABEL_EXTENSIONS = {
     "dota": ".txt",
+    "wpod": ".txt",
     "mask": ".png",
     "voc": ".xml",
     "xlabel": ".json",
@@ -56,6 +57,12 @@ SUPPORTED_TASKS = {
     },
     "dota2xlabel": {
         "description": "Convert DOTA format to XLABEL",
+        "modes": [],
+        "required_args": ["images", "output"],
+        "conditional_args": {},
+    },
+    "wpod2xlabel": {
+        "description": "Convert WPOD/IWPOD quad format to XLABEL",
         "modes": [],
         "required_args": ["images", "output"],
         "conditional_args": {},
@@ -122,6 +129,12 @@ SUPPORTED_TASKS = {
     },
     "xlabel2dota": {
         "description": "Convert XLABEL to DOTA format",
+        "modes": [],
+        "required_args": ["images", "output"],
+        "conditional_args": {},
+    },
+    "xlabel2wpod": {
+        "description": "Convert XLABEL to WPOD/IWPOD quad format",
         "modes": [],
         "required_args": ["images", "output"],
         "conditional_args": {},
@@ -380,6 +393,16 @@ def show_task_help(task_name):
             "  xanylabeling convert --task xlabel2dota --images ./images --labels ./labels --output ./output\n"
         )
 
+    elif task_name == "wpod2xlabel":
+        print(
+            "  xanylabeling convert --task wpod2xlabel --images ./images --labels ./labels --output ./output\n"
+        )
+
+    elif task_name == "xlabel2wpod":
+        print(
+            "  xanylabeling convert --task xlabel2wpod --images ./images --labels ./labels --output ./output\n"
+        )
+
     elif task_name == "mask2xlabel":
         print(
             "  xanylabeling convert --task mask2xlabel --images ./images --labels ./masks \\"
@@ -518,6 +541,7 @@ def run_conversion(
 ):
     """Core conversion logic"""
     dota_ext = LABEL_EXTENSIONS["dota"]
+    wpod_ext = LABEL_EXTENSIONS["wpod"]
     mask_ext = LABEL_EXTENSIONS["mask"]
     yolo_ext = LABEL_EXTENSIONS["yolo"]
     voc_ext = LABEL_EXTENSIONS["voc"]
@@ -756,6 +780,59 @@ def run_conversion(
                     )
 
                     converter.dota_to_custom(
+                        label_file, output_file, image_file
+                    )
+                    count += 1
+
+                print(
+                    colored(
+                        f"✓ Converted {count} files to XLABEL format: {output}",
+                        "green",
+                    )
+                )
+
+            elif task == "wpod2xlabel":
+                if not images:
+                    raise ValueError(
+                        "--images is required for WPOD conversion"
+                    )
+                if not osp.exists(images):
+                    raise FileNotFoundError(
+                        f"Image directory not found: {images}"
+                    )
+
+                if not labels:
+                    labels = images
+                    logger.warning(
+                        f"--labels not specified, using image directory: {labels}"
+                    )
+
+                if not output:
+                    raise ValueError(
+                        "--output is required for WPOD conversion"
+                    )
+                os.makedirs(output, exist_ok=True)
+
+                count = 0
+                image_files = get_image_files(images)
+                for image_file in tqdm(
+                    image_files, desc="Converting WPOD to XLABEL"
+                ):
+                    label_file = find_matching_file(
+                        image_file, labels, wpod_ext
+                    )
+                    if not label_file:
+                        logger.warning(
+                            f"Label file not found for: {osp.basename(image_file)}"
+                        )
+                        continue
+
+                    output_file = osp.join(
+                        output,
+                        osp.splitext(osp.basename(image_file))[0] + xlabel_ext,
+                    )
+
+                    converter.wpod_to_custom(
                         label_file, output_file, image_file
                     )
                     count += 1
@@ -1247,6 +1324,64 @@ def run_conversion(
                 print(
                     colored(
                         f"✓ Converted {count} XLABEL files to DOTA format: {output}",
+                        "green",
+                    )
+                )
+
+            elif task == "xlabel2wpod":
+                if not images:
+                    raise ValueError(
+                        "--images is required for XLABEL to WPOD conversion"
+                    )
+                if not osp.exists(images):
+                    raise FileNotFoundError(
+                        f"Image directory not found: {images}"
+                    )
+
+                if not labels:
+                    labels = images
+                    logger.warning(
+                        f"--labels not specified, using image directory: {labels}"
+                    )
+
+                if not output:
+                    raise ValueError(
+                        "--output is required for WPOD conversion"
+                    )
+                os.makedirs(output, exist_ok=True)
+
+                count = 0
+                image_files = get_image_files(images)
+                for image_file in tqdm(
+                    image_files, desc="Converting XLABEL to WPOD"
+                ):
+                    label_file = find_matching_file(
+                        image_file, labels, xlabel_ext
+                    )
+                    if not label_file:
+                        logger.warning(
+                            f"Label file not found for: {osp.basename(image_file)}"
+                        )
+                        continue
+
+                    try:
+                        relative_path = osp.relpath(image_file, images)
+                    except ValueError:
+                        relative_path = osp.basename(image_file)
+                    if relative_path == osp.pardir or relative_path.startswith(
+                        osp.pardir + osp.sep
+                    ):
+                        relative_path = osp.basename(image_file)
+                    output_file = osp.join(
+                        output, osp.splitext(relative_path)[0] + wpod_ext
+                    )
+                    os.makedirs(osp.dirname(output_file) or ".", exist_ok=True)
+                    converter.custom_to_wpod(label_file, output_file)
+                    count += 1
+
+                print(
+                    colored(
+                        f"✓ Converted {count} XLABEL files to WPOD format: {output}",
                         "green",
                     )
                 )

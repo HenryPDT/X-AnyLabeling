@@ -485,6 +485,52 @@ def _get_yolo_export_files(image_list, source_root, save_path, layout=None):
     return export_files
 
 
+def _get_wpod_export_files(image_list, source_root, save_path, layout=None):
+    """Map images to WPOD label/image destinations.
+
+    Unlike YOLO, WPOD keeps images and labels side by side in the same
+    folder. Without ``layout`` this preserves ``relpath`` under
+    ``save_path`` (single export). With ``layout`` (``"train"``/``"val"``)
+    it builds ``<save_path>/<layout>/...`` with ``*.jpg`` and ``*.txt``
+    siblings, so camera/scene subdirectories survive as
+    ``train/<scene>/`` and ``val/<scene>/``.
+    """
+    export_files = []
+    label_destinations = {}
+    is_in_place = osp.realpath(save_path) == osp.realpath(source_root)
+    for image_file in image_list:
+        try:
+            relative_image_path = osp.relpath(image_file, source_root)
+        except ValueError:
+            relative_image_path = osp.basename(image_file)
+        if relative_image_path == osp.pardir or relative_image_path.startswith(
+            osp.pardir + osp.sep
+        ):
+            relative_image_path = osp.basename(image_file)
+        relative_label_path = osp.splitext(relative_image_path)[0] + ".txt"
+
+        if is_in_place:
+            dst_file = osp.splitext(image_file)[0] + ".txt"
+            image_dst = image_file
+        elif layout is not None:
+            dst_file = osp.join(save_path, layout, relative_label_path)
+            image_dst = osp.join(save_path, layout, relative_image_path)
+        else:
+            dst_file = osp.join(save_path, relative_label_path)
+            image_dst = osp.join(save_path, relative_image_path)
+
+        destination_key = osp.normcase(osp.normpath(dst_file))
+        if destination_key in label_destinations:
+            raise ValueError(
+                "Multiple images map to the same WPOD label file "
+                f"'{relative_label_path}':\n"
+                f"{label_destinations[destination_key]}\n{image_file}"
+            )
+        label_destinations[destination_key] = image_file
+        export_files.append((image_file, dst_file, image_dst))
+    return export_files
+
+
 def export_yolo_annotation(self, mode):  # noqa: C901
     if not _check_filename_exist(self):
         return
@@ -888,6 +934,7 @@ def export_yolo_annotation(self, mode):  # noqa: C901
     )
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -919,6 +966,7 @@ def export_yolo_annotation(self, mode):  # noqa: C901
                 skipped_empty.add(image_file)
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -1163,6 +1211,7 @@ def export_voc_annotation(self, mode):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -1191,6 +1240,7 @@ def export_voc_annotation(self, mode):
                 os.remove(dst_file)
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -1598,6 +1648,7 @@ def export_dota_annotation(self):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -1620,6 +1671,7 @@ def export_dota_annotation(self):
                 converter.custom_to_dota(src_file, dst_file)
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 
@@ -1648,6 +1700,392 @@ def export_dota_annotation(self):
         )
         popup.show_popup(self, position="center")
 
+
+def export_wpod_annotation(self):
+    """Export ``quadrilateral`` shapes to WPOD/IWPOD blocked quad format.
+
+    Same options as the YOLO export: export labels alongside images
+    (in-place), copy images, skip empty labels, and train/val split.
+    Camera/scene subdirectories are preserved as relative paths under the
+    export root. Writes one ``4,x1,x2,x3,x4,y1,y2,y3,y4,,`` line per
+    quadrilateral; no classes file is needed since the format carries no
+    label column.
+    """
+    if not _check_filename_exist(self):
+        return
+
+    converter = LabelConverter()
+    source_root = _get_yolo_source_root(
+        self.filename, getattr(self, "last_open_dir", None)
+    )
+
+    dialog = QtWidgets.QDialog(self)
+    dialog.setWindowTitle(
+        QCoreApplication.translate("LabelingWidget", "Export options")
+    )
+    dialog.setMinimumWidth(500)
+    dialog.setStyleSheet(get_export_option_style())
+
+    layout = QVBoxLayout()
+    layout.setContentsMargins(24, 24, 24, 24)
+    layout.setSpacing(16)
+
+    path_layout = QVBoxLayout()
+    path_label = QtWidgets.QLabel(
+        QCoreApplication.translate("LabelingWidget", "Export path")
+    )
+    path_layout.addWidget(path_label)
+
+    path_input_layout = QHBoxLayout()
+    path_input_layout.setSpacing(8)
+
+    default_labels_path = osp.realpath(
+        osp.join(source_root, "..", "wpod_labels")
+    )
+    path_edit = QtWidgets.QLineEdit()
+    path_edit.setText(default_labels_path)
+    path_edit.setPlaceholderText(
+        QCoreApplication.translate("LabelingWidget", "Select Export Directory")
+    )
+
+    def browse_export_path():
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            QCoreApplication.translate(
+                "LabelingWidget", "Select Export Directory"
+            ),
+            path_edit.text(),
+            QtWidgets.QFileDialog.Option.DontUseNativeDialog,
+        )
+        if path:
+            path_edit.setText(path)
+
+    path_button = QtWidgets.QPushButton(
+        QCoreApplication.translate("LabelingWidget", "Browse")
+    )
+    path_button.clicked.connect(browse_export_path)
+    path_button.setStyleSheet(get_cancel_btn_style())
+
+    path_input_layout.addWidget(path_edit)
+    path_input_layout.addWidget(path_button)
+    path_layout.addLayout(path_input_layout)
+    layout.addLayout(path_layout)
+
+    options_label = QtWidgets.QLabel(
+        QCoreApplication.translate("LabelingWidget", "Export Options")
+    )
+    layout.addWidget(options_label)
+
+    in_place_checkbox = QtWidgets.QCheckBox(
+        QCoreApplication.translate(
+            "LabelingWidget", "Export labels alongside images (in-place)?"
+        )
+    )
+    in_place_checkbox.setChecked(False)
+    layout.addWidget(in_place_checkbox)
+
+    save_images_checkbox = QtWidgets.QCheckBox(
+        QCoreApplication.translate("LabelingWidget", "Save with images?")
+    )
+    save_images_checkbox.setChecked(False)
+    layout.addWidget(save_images_checkbox)
+
+    skip_empty_files_checkbox = QtWidgets.QCheckBox(
+        QCoreApplication.translate("LabelingWidget", "Skip empty labels?")
+    )
+    skip_empty_files_checkbox.setChecked(False)
+    layout.addWidget(skip_empty_files_checkbox)
+
+    split_section = _create_split_section(
+        dialog,
+        self,
+        image_provider=lambda: (
+            list(self.image_list) if self.image_list else [self.filename]
+        ),
+        output_dir_provider=lambda: getattr(self, "output_dir", None),
+        skip_empty_provider=skip_empty_files_checkbox.isChecked,
+    )
+    layout.addWidget(split_section["enable"])
+    layout.addLayout(split_section["row"])
+    layout.addWidget(split_section["preview"])
+    skip_empty_files_checkbox.toggled.connect(
+        lambda _c: split_section["refresh"]()
+    )
+
+    in_place = False
+    last_custom_path = default_labels_path
+    split_path_toggler = _make_split_path_toggler(
+        path_edit, default_labels_path
+    )
+
+    def on_in_place_toggled(checked):
+        nonlocal in_place, last_custom_path
+        in_place = checked
+        if checked:
+            last_custom_path = path_edit.text()
+            path_edit.setText(source_root)
+            path_edit.setEnabled(False)
+            path_button.setEnabled(False)
+            save_images_checkbox.setChecked(False)
+            save_images_checkbox.setEnabled(False)
+            split_section["enable"].setChecked(False)
+            split_section["enable"].setEnabled(False)
+        else:
+            path_edit.setText(last_custom_path)
+            path_edit.setEnabled(True)
+            path_button.setEnabled(True)
+            save_images_checkbox.setEnabled(True)
+            split_section["enable"].setEnabled(True)
+
+    in_place_checkbox.toggled.connect(on_in_place_toggled)
+
+    def on_split_toggled(checked):
+        if checked:
+            in_place_checkbox.setChecked(False)
+            in_place_checkbox.setEnabled(False)
+        else:
+            in_place_checkbox.setEnabled(True)
+        split_path_toggler(checked)
+
+    split_section["enable"].toggled.connect(on_split_toggled)
+    if split_section["enable"].isChecked():
+        # Persisted pref was on: apply split-mode UI state.
+        on_split_toggled(True)
+        split_section["refresh"]()
+
+    button_layout = QHBoxLayout()
+    button_layout.setContentsMargins(0, 16, 0, 0)
+    button_layout.setSpacing(8)
+
+    cancel_button = QtWidgets.QPushButton(
+        QCoreApplication.translate("LabelingWidget", "Cancel")
+    )
+    cancel_button.clicked.connect(dialog.reject)
+    cancel_button.setStyleSheet(get_cancel_btn_style())
+
+    ok_button = QtWidgets.QPushButton(
+        QCoreApplication.translate("LabelingWidget", "OK")
+    )
+    ok_button.clicked.connect(dialog.accept)
+    ok_button.setStyleSheet(get_ok_btn_style())
+
+    button_layout.addStretch()
+    button_layout.addWidget(cancel_button)
+    button_layout.addWidget(ok_button)
+    layout.addLayout(button_layout)
+
+    dialog.setLayout(layout)
+    result = dialog.exec()
+
+    if not result:
+        return
+
+    save_path = path_edit.text()
+    is_in_place = in_place or (
+        osp.realpath(save_path) == osp.realpath(source_root)
+    )
+    save_images = save_images_checkbox.isChecked() and not is_in_place
+    skip_empty_files = skip_empty_files_checkbox.isChecked()
+    split_enabled = split_section["enable"].isChecked() and not is_in_place
+    split_ratio = split_section["ratio"].value()
+    split_seed = split_section["seed"].value()
+    _save_split_prefs(self, split_enabled, split_ratio, split_seed)
+    image_list = self.image_list if self.image_list else [self.filename]
+
+    split_result = None
+    if split_enabled:
+        try:
+            split_result, _, _ = _plan_export_split(
+                image_list,
+                getattr(self, "output_dir", None),
+                split_ratio,
+                split_seed,
+                skip_empty_files,
+            )
+        except ValueError as error:
+            _show_yolo_export_error(self, None, error)
+            return
+
+    try:
+        _validate_yolo_export_path(
+            source_root, save_path, allow_same_dir=is_in_place
+        )
+        if split_result is not None:
+            export_files = _get_wpod_export_files(
+                split_result.train, source_root, save_path, layout="train"
+            ) + _get_wpod_export_files(
+                split_result.val, source_root, save_path, layout="val"
+            )
+        else:
+            export_files = _get_wpod_export_files(
+                image_list, source_root, save_path
+            )
+    except ValueError as error:
+        _show_yolo_export_error(self, None, error)
+        return
+
+    def get_label_file(image_file):
+        label_file_name = osp.splitext(osp.basename(image_file))[0] + ".json"
+        label_dir = self.output_dir or osp.dirname(image_file)
+        return osp.join(label_dir, label_file_name)
+
+    if osp.exists(save_path) and not is_in_place:
+        msg_box = QtWidgets.QMessageBox(self)
+        msg_box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        msg_box.setWindowTitle(
+            QCoreApplication.translate(
+                "LabelingWidget", "Output Directory Exists!"
+            )
+        )
+        msg_box.setText(
+            QCoreApplication.translate(
+                "LabelingWidget",
+                "Directory already exists. Choose an action:",
+            )
+        )
+        msg_box.setInformativeText(
+            QCoreApplication.translate(
+                "LabelingWidget",
+                "• Yes    - Merge with existing files\n"
+                "• No     - Delete existing directory\n"
+                "• Cancel - Abort export",
+            )
+        )
+
+        msg_box.addButton(
+            QCoreApplication.translate("LabelingWidget", "Yes"),
+            QtWidgets.QMessageBox.ButtonRole.YesRole,
+        )
+        no_button = msg_box.addButton(
+            QCoreApplication.translate("LabelingWidget", "No"),
+            QtWidgets.QMessageBox.ButtonRole.NoRole,
+        )
+        cancel_button = msg_box.addButton(
+            QCoreApplication.translate("LabelingWidget", "Cancel"),
+            QtWidgets.QMessageBox.ButtonRole.RejectRole,
+        )
+        msg_box.setStyleSheet(get_msg_box_style())
+        msg_box.exec()
+
+        clicked_button = msg_box.clickedButton()
+        if clicked_button == no_button:
+            shutil.rmtree(save_path)
+            os.makedirs(save_path)
+        elif clicked_button == cancel_button:
+            return
+    elif not osp.exists(save_path):
+        os.makedirs(save_path)
+
+    progress_dialog = QProgressDialog(
+        QCoreApplication.translate("LabelingWidget", "Exporting..."),
+        QCoreApplication.translate("LabelingWidget", "Cancel"),
+        0,
+        len(export_files),
+        self,
+    )
+    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+    progress_dialog.setWindowTitle(
+        QCoreApplication.translate("LabelingWidget", "Progress")
+    )
+    progress_dialog.setMinimumWidth(500)
+    progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
+    progress_dialog.setStyleSheet(
+        get_progress_dialog_style(color="#1d1d1f", height=20)
+    )
+
+    current_image_file = None
+    skipped_empty: set = set()
+    try:
+        for i, (image_file, dst_file, image_dst) in enumerate(export_files):
+            current_image_file = image_file
+            src_file = get_label_file(image_file)
+            os.makedirs(osp.dirname(dst_file), exist_ok=True)
+
+            is_empty_file = converter.custom_to_wpod(
+                src_file,
+                dst_file,
+                skip_empty_files=skip_empty_files,
+            )
+
+            if save_images and not (skip_empty_files and is_empty_file):
+                if osp.realpath(image_file) != osp.realpath(image_dst):
+                    os.makedirs(osp.dirname(image_dst), exist_ok=True)
+                    shutil.copy(image_file, image_dst)
+
+            if skip_empty_files and is_empty_file and osp.exists(dst_file):
+                os.remove(dst_file)
+            if skip_empty_files and is_empty_file:
+                skipped_empty.add(image_file)
+
+            progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
+            if progress_dialog.wasCanceled():
+                break
+
+        if split_result is not None:
+            # WPOD split layout: train/<scene>/ + val/<scene>/ with *.jpg
+            # and *.txt side by side, plus train.txt/val.txt. No
+            # dataset.yaml or classes.txt: the quad format carries no
+            # label column.
+            image_dests = {
+                src: image_dst for src, _label, image_dst in export_files
+            }
+            # Labels filtered out as empty mid-export must not linger in
+            # the split lists.
+            final_train = [
+                p for p in split_result.train if p not in skipped_empty
+            ]
+            final_val = [
+                p for p in split_result.val if p not in skipped_empty
+            ]
+            if save_images:
+                train_images = [image_dests[p] for p in final_train]
+                val_images = [image_dests[p] for p in final_val]
+            else:
+                train_images = list(final_train)
+                val_images = list(final_val)
+            write_list_file(
+                osp.join(save_path, "train.txt"),
+                train_images,
+                relto=save_path if save_images else None,
+            )
+            write_list_file(
+                osp.join(save_path, "val.txt"),
+                val_images,
+                relto=save_path if save_images else None,
+            )
+
+        current_image_file = None
+        progress_dialog.close()
+        template = QCoreApplication.translate(
+            "LabelingWidget",
+            "Exporting annotations successfully!\n"
+            "Results have been saved to:\n"
+            "%s",
+        )
+        message_text = template % save_path
+        popup = Popup(
+            message_text,
+            self,
+            icon=new_icon_path("copy-green", "svg"),
+        )
+        popup.show_popup(self, popup_height=65, position="center")
+
+    except Exception as e:
+        progress_dialog.close()
+        failed_image_path = (
+            osp.abspath(current_image_file) if current_image_file else None
+        )
+        if failed_image_path:
+            logger.error(
+                "Error occurred while exporting annotations for image:\n"
+                f"{failed_image_path}\n{e}"
+            )
+        else:
+            logger.error(f"Error occurred while exporting annotations: {e}")
+
+        _show_yolo_export_error(self, current_image_file, e)
 
 def _export_mask_files(
     converter,
@@ -1682,6 +2120,7 @@ def _export_mask_files(
             )
 
         progress_dialog.setValue(i + 1)
+        QtWidgets.QApplication.processEvents()
         if progress_dialog.wasCanceled():
             break
 
@@ -1828,6 +2267,7 @@ def export_mask_annotation(self):
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
     progress_dialog.setRange(0, 0)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -2167,6 +2607,7 @@ def export_pporc_annotation(self, mode):
     progress_dialog.setWindowTitle(self.tr("Progress"))
     progress_dialog.setMinimumWidth(500)
     progress_dialog.setMinimumHeight(150)
+    progress_dialog.setMinimumDuration(0)
     progress_dialog.setStyleSheet(
         get_progress_dialog_style(color="#1d1d1f", height=20)
     )
@@ -2187,6 +2628,7 @@ def export_pporc_annotation(self, mode):
                 total_class_set = total_class_set.union(class_set)
 
             progress_dialog.setValue(i)
+            QtWidgets.QApplication.processEvents()
             if progress_dialog.wasCanceled():
                 break
 

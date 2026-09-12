@@ -1622,6 +1622,13 @@ class LabelingWidget(LabelDialog):
             icon=upload_export_icon,
             tip=self.tr("Upload Custom DOTA Annotations"),
         )
+        upload_wpod_annotation = action(
+            self.tr("WPOD"),
+            lambda: utils.upload_wpod_annotation(self),
+            None,
+            icon=upload_export_icon,
+            tip=self.tr("Upload WPOD/IWPOD Quad Annotations"),
+        )
         upload_mask_annotation = action(
             self.tr("MASK"),
             lambda: utils.upload_mask_annotation(self, LABEL_OPACITY),
@@ -1752,6 +1759,13 @@ class LabelingWidget(LabelDialog):
             None,
             icon=upload_export_icon,
             tip=self.tr("Export Custom DOTA Annotations"),
+        )
+        export_wpod_annotation = action(
+            self.tr("WPOD"),
+            lambda: utils.export_wpod_annotation(self),
+            None,
+            icon=upload_export_icon,
+            tip=self.tr("Export WPOD/IWPOD Quad Annotations"),
         )
         export_mask_annotation = action(
             self.tr("MASK"),
@@ -1958,6 +1972,7 @@ class LabelingWidget(LabelDialog):
             upload_coco_seg_annotation=upload_coco_seg_annotation,
             upload_coco_pose_annotation=upload_coco_pose_annotation,
             upload_dota_annotation=upload_dota_annotation,
+            upload_wpod_annotation=upload_wpod_annotation,
             upload_mask_annotation=upload_mask_annotation,
             upload_mot_annotation=upload_mot_annotation,
             upload_odvg_annotation=upload_odvg_annotation,
@@ -1975,6 +1990,7 @@ class LabelingWidget(LabelDialog):
             export_coco_seg_annotation=export_coco_seg_annotation,
             export_coco_pose_annotation=export_coco_pose_annotation,
             export_dota_annotation=export_dota_annotation,
+            export_wpod_annotation=export_wpod_annotation,
             export_mask_annotation=export_mask_annotation,
             export_mot_annotation=export_mot_annotation,
             export_mots_annotation=export_mots_annotation,
@@ -2248,6 +2264,7 @@ class LabelingWidget(LabelDialog):
                 upload_coco_pose_annotation,
                 None,
                 upload_dota_annotation,
+                upload_wpod_annotation,
                 upload_mask_annotation,
                 upload_mot_annotation,
                 upload_odvg_annotation,
@@ -2275,6 +2292,7 @@ class LabelingWidget(LabelDialog):
                 export_coco_pose_annotation,
                 None,
                 export_dota_annotation,
+                export_wpod_annotation,
                 export_mask_annotation,
                 export_odvg_annotation,
                 None,

@@ -35,6 +35,40 @@ class PoseClassError(ValueError):
 
 
 class LabelConverter:
+    WPOD_DEFAULT_LABEL = "plate"
+
+    @staticmethod
+    def _parse_wpod_line(line: str) -> List[float]:
+        """Parse one WPOD/IWPOD quad line into blocked normalized coords.
+
+        Format: ``4,x1,x2,x3,x4,y1,y2,y3,y4,,`` (comma-separated, blocked
+        layout, normalized [0,1]). Trailing empty fields are ignored.
+        Returns ``[x1, x2, x3, x4, y1, y2, y3, y4]`` or raises ValueError.
+        Blank lines return None (caller skips them).
+        """
+        if line is None or not line.strip():
+            return None
+        tokens = [p.strip() for p in line.strip().split(",")]
+        tokens = [t for t in tokens if t != ""]
+        if len(tokens) < 9:
+            raise ValueError(
+                f"Invalid WPOD line (expected 9 fields, got {len(tokens)}): {line[:120]!r}"
+            )
+        if tokens[0] not in ("4", "4.0"):
+            raise ValueError(
+                f"Invalid WPOD line (leading count must be 4): {line[:120]!r}"
+            )
+        try:
+            vals = [float(t) for t in tokens[1:9]]
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid WPOD line (non-numeric coords): {line[:120]!r}"
+            ) from e
+        if len(tokens) > 9:
+            logger.warning(
+                f"WPOD line has {len(tokens)} fields, using first 9: {line[:120]!r}"
+            )
+        return vals
     def __init__(self, classes_file=None, pose_cfg_file=None, classes=None):
         self.classes = []
         if classes is not None:
@@ -970,6 +1004,54 @@ class LabelConverter:
         self.custom_data["imageWidth"] = image_width
         self.save_json(self.custom_data, output_file)
 
+    def wpod_to_custom(
+        self, input_file, output_file, image_file, label=None
+    ):
+        """Import WPOD/IWPOD quads (``4,x1..x4,y1..y4,,``) to XLABEL.
+
+        Each non-blank line becomes one ``quadrilateral`` shape with a fixed
+        label (default ``plate``). Normalized coords are clamped to [0,1]
+        before scaling to pixels, so edge-draws / slightly out-of-range
+        quads survive import instead of being dropped.
+        """
+        self.reset()
+        label = label or self.WPOD_DEFAULT_LABEL
+        lines = self.read_lines(input_file)
+        image_width, image_height = self.get_image_size(image_file)
+        for lineno, raw in enumerate(lines, start=1):
+            vals = self._parse_wpod_line(raw)
+            if vals is None:
+                continue
+            x1, x2, x3, x4, y1, y2, y3, y4 = vals
+            clamped = [max(0.0, min(1.0, v)) for v in vals]
+            if clamped != vals:
+                logger.warning(
+                    f"{osp.basename(input_file)}:{lineno}: clamped out-of-range quad to [0,1]"
+                )
+            x1, x2, x3, x4, y1, y2, y3, y4 = clamped
+            points = [
+                [x1 * image_width, y1 * image_height],
+                [x2 * image_width, y2 * image_height],
+                [x3 * image_width, y3 * image_height],
+                [x4 * image_width, y4 * image_height],
+            ]
+            shape = {
+                "label": label,
+                "description": None,
+                "points": points,
+                "group_id": None,
+                "difficult": False,
+                "shape_type": "quadrilateral",
+                "flags": {},
+                "attributes": {},
+            }
+            self.custom_data["shapes"].append(shape)
+
+        self.custom_data["imagePath"] = osp.basename(image_file)
+        self.custom_data["imageHeight"] = image_height
+        self.custom_data["imageWidth"] = image_width
+        self.save_json(self.custom_data, output_file)
+
     def mask_to_custom(
         self, input_file, output_file, image_file, mapping_table
     ):
@@ -1825,6 +1907,43 @@ class LabelConverter:
                 f.write(
                     f"{x0} {y0} {x1} {y1} {x2} {y2} {x3} {y3} {label} {int(difficult)}\n"
                 )
+
+    def custom_to_wpod(self, input_file, output_file, skip_empty_files=False):
+        """Export XLABEL quadrilaterals to WPOD/IWPOD blocked quad format.
+
+        Writes one ``4,x1,x2,x3,x4,y1,y2,y3,y4,,`` line per shape with
+        normalized [0,1] coords. Only 4-point ``quadrilateral`` shapes are
+        exported (the shape type produced by :meth:`wpod_to_custom` and the
+        quadrilateral ``T`` tool); other shape types are skipped. Points are
+        clamped into image bounds so the output always validates.
+
+        Returns True when no quad was written (missing/empty input).
+        """
+        is_empty_file = True
+        if osp.exists(input_file):
+            data = self.read_json(input_file)
+        else:
+            if not skip_empty_files:
+                pathlib.Path(output_file).touch()
+            return is_empty_file
+        w, h = data["imageWidth"], data["imageHeight"]
+        if not w or not h:
+            raise ValueError(
+                f"{data.get('imagePath', input_file)}: invalid image size {w}x{h}"
+            )
+        with open(output_file, "w", encoding="utf-8") as f:
+            for shape in data["shapes"]:
+                points = shape.get("points", [])
+                if shape.get("shape_type") != "quadrilateral" or len(points) != 4:
+                    continue
+                clamped = self.clamp_points(points, w, h)
+                (x1, y1), (x2, y2), (x3, y3), (x4, y4) = clamped
+                f.write(
+                    f"4,{x1 / w},{x2 / w},{x3 / w},{x4 / w},"
+                    f"{y1 / h},{y2 / h},{y3 / h},{y4 / h},,\n"
+                )
+                is_empty_file = False
+        return is_empty_file
 
     def write_empty_mask(
         self,
