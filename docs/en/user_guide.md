@@ -743,7 +743,7 @@ Open it from **Tools -> Shape Converter**, then select a source shape type and a
 
 Currently supported conversion mappings:
 
-- `polygon` -> `rectangle`, `rotation`
+- `polygon` -> `rectangle`, `rotation`, `quadrilateral`
 - `rectangle` -> `rotation`, `polygon`, `circle`, `quadrilateral`
 - `rotation` -> `rectangle`, `quadrilateral`, `polygon`, `circle`
 - `line` -> `linestrip`
@@ -754,6 +754,7 @@ Rules:
 
 - Conversions *to* `circle` use an **inscribed-circle** strategy.
 - `polygon`/`rotation` -> `rectangle` uses an axis-aligned bounding box (AABB).
+- `polygon` -> `quadrilateral` keeps the vertices of 4-point polygons (a closing duplicate is dropped first); otherwise approxPolyDP/min-area candidates are scored by mask IoU (a RANSAC line-based quad joins the race when they score below 0.98), and the winner's corners are refined by intersecting Huber-robust edge lines (recovers corners a rounded mask rounded off).
 - `circle` -> `rectangle`/`rotation`/`quadrilateral` generates a four-point shape from circle center and radius.
 
 > [!WARNING]

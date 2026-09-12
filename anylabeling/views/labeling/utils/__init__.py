@@ -62,6 +62,9 @@ from .shape import (
     rectangle_from_diagonal,
     shape_conversion,
     open_shape_converter,
+    convert_single_shape,
+    get_conversion_params,
+    CONVERSION_TARGETS,
 )
 from .shape_geometry import (
     apply_class_agnostic_shape_nms,

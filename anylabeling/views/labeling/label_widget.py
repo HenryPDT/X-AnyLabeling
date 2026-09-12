@@ -1203,6 +1203,25 @@ class LabelingWidget(LabelDialog):
             icon="convert",
             tip=self.tr("Open shape converter"),
         )
+        convert_to_menu = QtWidgets.QMenu(self.tr("Convert To"), self)
+        convert_to_actions = {}
+        for target_type, tip in (
+            ("quadrilateral", self.tr("Convert selected shapes to quadrilateral")),
+            ("polygon", self.tr("Convert selected shapes to polygon")),
+            ("rectangle", self.tr("Convert selected shapes to rectangle")),
+            ("rotation", self.tr("Convert selected shapes to rotated box")),
+        ):
+            convert_action = action(
+                target_type.capitalize(),
+                functools.partial(
+                    self.convert_selected_shapes, target_type
+                ),
+                icon="convert",
+                tip=tip,
+                enabled=False,
+            )
+            convert_to_menu.addAction(convert_action)
+            convert_to_actions[target_type] = convert_action
         open_chatbot = action(
             self.tr("ChatBot"),
             self.open_chatbot,
@@ -1917,6 +1936,10 @@ class LabelingWidget(LabelDialog):
             visibility_shapes_mode=visibility_shapes_mode,
             run_all_images=run_all_images,
             union_selection=union_selection,
+            convert_to_quadrilateral=convert_to_actions["quadrilateral"],
+            convert_to_polygon=convert_to_actions["polygon"],
+            convert_to_rectangle=convert_to_actions["rectangle"],
+            convert_to_rotation=convert_to_actions["rotation"],
             delete=delete,
             edit=edit,
             duplicate=duplicate,
@@ -2090,6 +2113,7 @@ class LabelingWidget(LabelDialog):
                 None,
                 copy_coordinates,
                 union_selection,
+                convert_to_menu,
                 snap_selected_to_contour,
                 toggle_contour_snap,
                 duplicate,
@@ -3341,19 +3365,39 @@ class LabelingWidget(LabelDialog):
             )
             if osp.exists(label_file):
                 label_file_list = [label_file]
-        elif self.image_list and not self.output_dir and self.filename:
-            file_list = os.listdir(osp.dirname(self.filename))
-            for file_name in file_list:
-                if not file_name.endswith(".json"):
-                    continue
-                label_file_list.append(
-                    osp.join(osp.dirname(self.filename), file_name)
-                )
+            return label_file_list
+        roots = []
         if self.output_dir:
-            for file_name in os.listdir(self.output_dir):
-                if not file_name.endswith(".json"):
-                    continue
-                label_file_list.append(osp.join(self.output_dir, file_name))
+            roots = [self.output_dir]
+        elif self.filename:
+            # Prefer the opened folder root so nested scene/camera
+            # subdirectories are included, not just the current file's
+            # directory (mirrors _get_yolo_source_root in utils/export.py).
+            current_dir = osp.dirname(osp.abspath(self.filename))
+            root = current_dir
+            last_open_dir = getattr(self, "last_open_dir", None)
+            if last_open_dir:
+                last_open_dir = osp.abspath(last_open_dir)
+                try:
+                    if (
+                        osp.commonpath((last_open_dir, current_dir))
+                        == last_open_dir
+                    ):
+                        root = last_open_dir
+                except ValueError:
+                    pass
+            roots = [root]
+        seen = set()
+        for root in roots:
+            for dirpath, _, filenames in os.walk(root):
+                for file_name in sorted(filenames):
+                    if not file_name.endswith(".json"):
+                        continue
+                    full_path = osp.join(dirpath, file_name)
+                    key = osp.normcase(osp.normpath(full_path))
+                    if key not in seen:
+                        seen.add(key)
+                        label_file_list.append(full_path)
         return label_file_list
 
     def copy_shape_coordinates(self):
@@ -3492,6 +3536,64 @@ class LabelingWidget(LabelDialog):
                 ),
                 3000,
             )
+
+    def convert_selected_shapes(self, target_type):
+        """Convert selected shapes to target_type in place (single undo step)."""
+        convertible = [
+            shape
+            for shape in self.canvas.selected_shapes
+            if not getattr(shape, "locked", False)
+            and target_type
+            in utils.CONVERSION_TARGETS.get(shape.shape_type, [])
+        ]
+        if not convertible:
+            self.statusBar().showMessage(
+                self.tr("No convertible shapes selected"), 3000
+            )
+            return
+        source_type = convertible[0].shape_type
+        params = utils.get_conversion_params(
+            self, f"{source_type}_to_{target_type}"
+        )
+        if params is None:
+            return
+        # Store pre-conversion state so single Undo restores original geometry.
+        self.canvas.store_shapes()
+        converted = 0
+        for shape in convertible:
+            result = utils.convert_single_shape(
+                shape.shape_type,
+                [(point.x(), point.y()) for point in shape.points],
+                target_type,
+                params,
+            )
+            if result is None:
+                continue
+            new_type, new_points, direction = result
+            shape.shape_type = new_type
+            shape.points = [
+                QtCore.QPointF(point[0], point[1]) for point in new_points
+            ]
+            shape.direction = (
+                direction if new_type == "rotation" else 0
+            )
+            shape.close()
+            converted += 1
+        if converted > 0:
+            self.canvas.update()
+            self.set_dirty()
+            self.statusBar().showMessage(
+                self.tr("Converted %d shape(s) to %s")
+                % (converted, target_type),
+                3000,
+            )
+        else:
+            # No change — drop the redundant backup we just pushed.
+            try:
+                if self.canvas.shapes_backups:
+                    self.canvas.shapes_backups.pop()
+            except Exception:
+                pass
 
     # Trainer
     def start_training(self, mode):
@@ -5573,6 +5675,27 @@ class LabelingWidget(LabelDialog):
         )
         if hasattr(self.actions, "snap_selected_to_contour"):
             self.actions.snap_selected_to_contour.setEnabled(bool(can_snap))
+        for target_type in (
+            "quadrilateral",
+            "polygon",
+            "rectangle",
+            "rotation",
+        ):
+            convert_action = getattr(
+                self.actions, f"convert_to_{target_type}", None
+            )
+            if convert_action is not None:
+                convert_action.setEnabled(
+                    n_selected >= 1
+                    and not has_locked
+                    and any(
+                        target_type
+                        in utils.CONVERSION_TARGETS.get(
+                            shape.shape_type, []
+                        )
+                        for shape in selected_shapes
+                    )
+                )
         self.actions.union_selection.setEnabled(
             not has_locked
             and not all(value > 0 for value in allow_merge_shape_type.values())
